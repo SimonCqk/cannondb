@@ -1,14 +1,15 @@
 '''
 This file include:
 - Storage: Abstract base class for all storage implementation.
-- FileStorage: Store data in disk.
-- MemoryStorage: Store data in memory.
+- FileStorage: Store data into disk.
+- MemoryStorage: Store data into memory.
 '''
 
 from abc import ABC, abstractmethod
 import os
 import struct
 import portalocker
+
 
 class Storage(ABC):
 	'''
@@ -37,7 +38,103 @@ class Storage(ABC):
 
 
 class FileStorage(Storage):
-	pass
+	'''
+	Store data into disk (.db file).
+	'''
+	ROOT_BLOCK_SIZE = 4096
+	INTEGER_FORMAT = "!Q"  # byte-order:network (= big-endian) type:unsigned long long
+	INTEGER_LENGTH = 8  # sizeof(unsigned long long) = 8
+
+	def __init__(self, file):
+		self._file = file
+		self.locked = False
+		self._ensure_root_block()
+
+	def _ensure_root_block(self):
+		self.lock()
+		self._seek_end()
+		end_address = self._file.tell()
+		if end_address < self.ROOT_BLOCK_SIZE:
+			self._file.write(b'\x00' * (self.ROOT_BLOCK_SIZE - end_address))
+		self.unlock()
+
+	def _seek_end(self):
+		self._file.seek(0, os.SEEK_END)  # move to the end of file
+
+	def _seek_root_block(self):
+		self._file.seek(0)  # move to the start of file
+
+	def _bytes_to_integer(self, integer_bytes):
+		return struct.unpack(self.INTEGER_FORMAT, integer_bytes)[0]
+
+	def _integer_to_bytes(self, integer):
+		return struct.pack(self.INTEGER_FORMAT, integer)
+
+	def _read_integer(self):
+		return self._bytes_to_integer(self._file.read(self.INTEGER_LENGTH))
+
+	def _write_integer(self, integer):
+		self.lock()
+		self._file.write(self._integer_to_bytes(integer))
+
+	def commit_root_address(self, root_address):
+		self.lock()
+		self._file.flush()
+		self._seek_root_block()
+		self._write_integer(root_address)
+		self._file.flush()
+		self.unlock()
+
+	def get_root_address(self):
+		self._seek_root_block()
+		root_address = self._read_integer()
+		return root_address
+
+	def write(self, data, address):
+		self.lock()
+		if not address:  # write for the first time, just append.
+			self._seek_end()
+			obj_address = self._file.tell()
+		else:
+			self._file.seek(address)
+			if len(data) <= self._read_integer():  # can be over-writen in the origin location, for saving memory.
+				obj_address = address
+			else:
+				self._seek_end()
+				obj_address = self._file.tell()
+		# 1.write the length of data  2.write the real data
+		self._write_integer(len(data))
+		self._file.write(data)
+		self.unlock()
+		return obj_address
+
+	def read(self, address):
+		self._file.seek(address)
+		length = self._read_integer()
+		data = self._file.read(length)
+		return data
+
+	def close(self):
+		self.unlock()
+		self._file.close()
+
+	def lock(self):
+		if not self.locked:
+			portalocker.lock(self._file, portalocker.LOCK_EX)
+			self.locked = True
+
+	def unlock(self):
+		if self.locked:
+			self._file.flush()
+			portalocker.unlock(self._file)
+			self.locked = False
+
+	@property
+	def closed(self):
+		return self._file.closed
+
 
 class MemoryStorage(Storage):
-	pass
+	'''
+	Store data into memory.
+	'''
