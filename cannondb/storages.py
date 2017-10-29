@@ -5,24 +5,26 @@ This file include:
 - MemoryStorage: Store data into memory.
 '''
 
-from abc import ABC, abstractmethod
+from abc import ABCMeta, abstractmethod
+from multiprocessing import Lock
 import os
 import struct
 import portalocker
+from .utility import with_metaclass
 
 
-class Storage(ABC):
+class Storage(with_metaclass(ABCMeta, object)):
 	'''
 	Abstract base class for all storage implementation.
 	Subclasses must override all these methods.
 	'''
 
 	@abstractmethod
-	def read(self):
+	def read(self, address):
 		raise NotImplementedError("Please override this method.")
 
 	@abstractmethod
-	def write(self):
+	def write(self, data, address):
 		raise NotImplementedError("Please override this method.")
 
 	@abstractmethod
@@ -46,6 +48,7 @@ class FileStorage(Storage):
 	INTEGER_LENGTH = 8  # sizeof(unsigned long long) = 8
 
 	def __init__(self, file):
+		super().__init__()
 		self._file = file
 		self.locked = False
 		self._ensure_root_block()
@@ -98,6 +101,7 @@ class FileStorage(Storage):
 		else:
 			self._file.seek(address)
 			if len(data) <= self._read_integer():  # can be over-writen in the origin location, for saving memory.
+				self._file.seek(address)
 				obj_address = address
 			else:
 				self._seek_end()
@@ -109,6 +113,8 @@ class FileStorage(Storage):
 		return obj_address
 
 	def read(self, address):
+		if address - self._file.seek(0) > self._seek_end() - self._file.seek(0):
+			raise RuntimeError('Out of address in this file.')
 		self._file.seek(address)
 		length = self._read_integer()
 		data = self._file.read(length)
@@ -136,5 +142,22 @@ class FileStorage(Storage):
 
 class MemoryStorage(Storage):
 	'''
-	Store data into memory.
+	Store data in cache to improve the performance.
 	'''
+	__slots__ = ['memory', 'lock']
+
+	def __init__(self):
+		super().__init__()
+		self.memory = dict()
+		self.lock = Lock()
+
+	def write(self, data, address):
+		with self.lock:
+			self.memory[address] = data
+
+	def read(self, address):
+		with self.lock:
+			return self.memory[address]
+
+	def close(self):
+		pass
