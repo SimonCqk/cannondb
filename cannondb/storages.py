@@ -10,6 +10,7 @@ from multiprocessing import Lock
 import os
 import struct
 import portalocker
+import random
 from .utility import with_metaclass
 
 
@@ -48,7 +49,7 @@ class FileStorage(Storage):
 	INTEGER_LENGTH = 8  # sizeof(unsigned long long) = 8
 
 	def __init__(self, file):
-		super().__init__()
+		super(FileStorage, self).__init__()
 		self._file = file
 		self.locked = False
 		self._ensure_root_block()
@@ -147,17 +148,20 @@ class MemoryStorage(Storage):
 	__slots__ = ['memory', 'lock']
 
 	def __init__(self):
-		super().__init__()
+		super(MemoryStorage, self).__init__()
 		self.memory = dict()
 		self.lock = Lock()
 
 	def write(self, data, address):
 		with self.lock:
+			if address == 0:
+				while address not in self.memory:
+					address = random.randint
 			self.memory[address] = data
+		return address
 
 	def read(self, address):
-		with self.lock:
-			return self.memory[address]
+		return self.memory[address]
 
 	def close(self):
-		pass
+		self.memory.clear()
