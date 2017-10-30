@@ -6,12 +6,12 @@ This file include:
 '''
 
 from abc import ABCMeta, abstractmethod
-from multiprocessing import Lock
+import multiprocessing
 import os
 import struct
 import portalocker
 import random
-from .utility import with_metaclass
+from .utility import with_metaclass, OutOfAddressExcepition
 
 
 class Storage(with_metaclass(ABCMeta, object)):
@@ -81,6 +81,12 @@ class FileStorage(Storage):
 		self.lock()
 		self._file.write(self._integer_to_bytes(integer))
 
+	def _deprecate_old(self, address):
+		self._file.seek(address)
+		size = self._read_integer()
+		size += len(size)
+		self._file.write(size * ' ')  # overwrite [block-size][block] by empty str.
+
 	def commit_root_address(self, root_address):
 		self.lock()
 		self._file.flush()
@@ -105,6 +111,7 @@ class FileStorage(Storage):
 				self._file.seek(address)
 				obj_address = address
 			else:
+				self._deprecate_old(address)
 				self._seek_end()
 				obj_address = self._file.tell()
 		# 1.write the length of data  2.write the real data
@@ -115,7 +122,7 @@ class FileStorage(Storage):
 
 	def read(self, address):
 		if address - self._file.seek(0) > self._seek_end() - self._file.seek(0):
-			raise RuntimeError('Out of address in this file.')
+			raise OutOfAddressExcepition('Out of address in this file.')
 		self._file.seek(address)
 		length = self._read_integer()
 		data = self._file.read(length)
@@ -145,18 +152,18 @@ class MemoryStorage(Storage):
 	'''
 	Store data in cache to improve the performance.
 	'''
-	__slots__ = ['memory', 'lock']
+	__slots__ = ['memory', 'lock']  # to save memory.
 
 	def __init__(self):
 		super(MemoryStorage, self).__init__()
 		self.memory = dict()
-		self.lock = Lock()
+		self.lock = multiprocessing.Lock()
 
 	def write(self, data, address):
 		with self.lock:
 			if address == 0:
 				while address not in self.memory:
-					address = random.randint
+					address = random.randint(0, 0xFFFFFFFFFFFFFFFF - 1)  # 0 ~ max(unsigned long long)
 			self.memory[address] = data
 		return address
 
