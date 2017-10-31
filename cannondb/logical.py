@@ -9,7 +9,7 @@ bottom of database.
 from abc import abstractmethod
 
 
-class NodeRef(object):
+class ValueRef(object):
 	def __init__(self, referent=None, address=0):
 		assert 0 <= address < 0xFFFFFFFFFFFFFFFF
 		self._referent = referent
@@ -49,4 +49,51 @@ class NodeRef(object):
 
 
 class BaseTree(object):
-	pass
+	'''
+	Separate database-about operations with B+Tree-about operations.
+	'''
+	node_ref_class = None
+	value_ref_class = ValueRef
+
+	def __init__(self, storage):
+		self._storage = storage
+		self._refresh_tree_ref()
+
+	def commit(self):
+		self._tree_ref.write_data(self._storage)
+		self._storage.commit_root_address(self._tree_ref.address)
+
+	def _refresh_tree_ref(self):
+		self._tree_ref = self.node_ref_class(  # be referenced from root node
+			address=self._storage.get_root_address())
+
+	def get(self, key):
+		if not self._storage.locked:
+			self._refresh_tree_ref()
+		return self._get(self._follow(self._tree_ref), key)
+
+	def set(self, key, value):
+		if not self._storage.locked:
+			self._storage.lock()
+			self._refresh_tree_ref()
+		self._tree_ref = self._insert(
+			self._follow(self._tree_ref), key, self.value_ref_class(value))
+
+	def pop(self, key):
+		if not self._storage.locked:
+			self._storage.lock()
+			self._refresh_tree_ref()
+		self._tree_ref = self._delete(
+			self._follow(self._tree_ref), key)
+
+	def _follow(self, ref):
+		return ref.read_data(self._storage)
+
+	def __len__(self):
+		if not self._storage.locked:
+			self._refresh_tree_ref()
+		root = self._follow(self._tree_ref)
+		if root:
+			return root.length
+		else:
+			return 0
