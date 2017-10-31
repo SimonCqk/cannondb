@@ -1,11 +1,32 @@
 '''
 This file include some utility Classes & functions.
 '''
+import random
 
 
 # define some exceptions used only inside cannondb.
-class OutOfAddressExcepition(IOError):
+class OutOfAddressException(IOError):
 	pass
+
+
+def generate_address(kwargs: dict):
+	'''
+	generate a address dynamically according to the length of kwargs..
+	:return: unsigned long long int
+	'''
+	if len(kwargs) < 0xFFFF:
+		address = random.randint(0, 0xFFFF)
+		while address in kwargs.keys():
+			address = random.randint(0, 0xFFFF)
+	elif len(kwargs) < 0xFFFFFFFF:
+		address = random.randint(0xFFFF, 0xFFFFFFFF)
+		while address in kwargs.keys():
+			address = random.randint(0xFFFF, 0xFFFFFFFF)
+	else:
+		address = random.randint(0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF - 1)
+		while address in kwargs.keys():
+			address = random.randint(0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF - 1)
+	return address
 
 
 # Source: https://github.com/PythonCharmers/python-future/blob/466bfb2dfa36d865285dc31fe2b0c0a53ff0f181/future/utils/__init__.py#L102-L134

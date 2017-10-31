@@ -10,8 +10,7 @@ import multiprocessing
 import os
 import struct
 import portalocker
-import random
-from .utility import with_metaclass, OutOfAddressExcepition
+from .utility import with_metaclass, generate_address, OutOfAddressExcepition
 
 
 class Storage(with_metaclass(ABCMeta, object)):
@@ -85,7 +84,7 @@ class FileStorage(Storage):
 		self._file.seek(address)
 		size = self._read_integer()
 		size += len(size)
-		self._file.write(size * ' ')  # overwrite [block-size][block] by empty str.
+		self._file.write(b' ' * size)  # overwrite [block-size][block] by empty str.
 
 	def commit_root_address(self, root_address):
 		self.lock()
@@ -150,7 +149,7 @@ class FileStorage(Storage):
 
 class MemoryStorage(Storage):
 	'''
-	Store data in cache to improve the performance.
+	Store data just in memory.
 	'''
 	__slots__ = ['memory', 'lock']  # to save memory.
 
@@ -162,8 +161,7 @@ class MemoryStorage(Storage):
 	def write(self, data, address):
 		with self.lock:
 			if address == 0:
-				while address not in self.memory:
-					address = random.randint(0, 0xFFFFFFFFFFFFFFFF - 1)  # 0 ~ max(unsigned long long)
+				address = generate_address(self.memory)
 			self.memory[address] = data
 		return address
 
