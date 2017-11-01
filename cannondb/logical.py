@@ -5,7 +5,6 @@ bottom of database.
 			of operations which do real manipulations to database.
 - BaseTree: basement of an b+ tree.
 '''
-
 from abc import abstractmethod
 
 
@@ -54,9 +53,12 @@ class BaseTree(object):
 	_tree_ref / _get / _insert / _delete are from subclass.
 	'''
 	node_ref_class = None
+	LEAF = None
 	value_ref_class = ValueRef
 
-	def __init__(self, storage):
+	def __init__(self, order, storage):
+		self.order = order
+		self._root = self._bottom = self.LEAF(self)
 		self._storage = storage
 		self._refresh_tree_ref()
 

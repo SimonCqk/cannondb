@@ -3,7 +3,6 @@ This file include the specific implementation of B+ tree.
 
 '''
 import bisect
-
 import itertools
 import operator
 
@@ -147,9 +146,8 @@ class BPlusNodeRef(ValueRef):
 class BPlusTree(BaseTree):
 	LEAF = _BPlusNode
 
-	def __init__(self, order):
-		self.order = order
-		self._root = self._bottom = self.LEAF(self)
+	def __init__(self, order, storage):
+		super().__init__(order, storage)
 
 	def __repr__(self):
 		def recurse(node, accum, depth):
@@ -160,38 +158,6 @@ class BPlusTree(BaseTree):
 		accum = []
 		recurse(self._root, accum, 0)
 		return "\n".join(accum)
-
-	@classmethod
-	def bulkload(cls, items, order):
-		tree = object.__new__(cls)
-		tree.order = order
-		leaves = tree._build_bulkloaded_leaves(items)
-		tree._build_bulkloaded_branches(leaves)
-		return tree
-
-	def _build_bulkloaded_branches(self, leaves, seps):
-		minimum = self.order // 2
-		levels = [leaves]
-		while len(seps) > self.order + 1:
-			items, nodes, seps = seps, [[]], []
-			for item in items:
-				if len(nodes[-1]) < self.order:
-					nodes[-1].append(item)
-				else:
-					seps.append(item)
-					nodes.append([])
-			if len(nodes[-1]) < minimum and seps:
-				last_two = nodes[-2] + [seps.pop()] + nodes[-1]
-				nodes[-2] = last_two[:minimum]
-				nodes[-1] = last_two[minimum + 1:]
-				seps.append(last_two[minimum])
-			offset = 0
-			for i, node in enumerate(nodes):
-				children = levels[-1][offset:offset + len(node) + 1]
-				nodes[i] = self.BRANCH(self, contents=node, children=children)
-				offset += len(node) + 1
-			levels.append(nodes)
-		self._root = self.BRANCH(self, contents=seps, children=levels[-1])
 
 	def _get(self, key):
 		node, index = self._path_to(key)[-1]
@@ -209,8 +175,27 @@ class BPlusTree(BaseTree):
 				else:
 					return
 
+	def _super_path_to(self, item):
+		current = self._root
+		ancestry = []
+
+		while getattr(current, "children", None):
+			index = bisect.bisect_left(current.contents, item)
+			ancestry.append((current, index))
+			if index < len(current.contents) \
+					and current.contents[index] == item:
+				return ancestry
+			current = current.children[index]
+
+		index = bisect.bisect_left(current.contents, item)
+		ancestry.append((current, index))
+		present = index < len(current.contents)
+		present = present and current.contents[index] == item
+
+		return ancestry
+
 	def _path_to(self, item):
-		path = super(BPlusTree, self)._path_to(item)
+		path = self._super_path_to(item)
 		node, index = path[-1]
 		while hasattr(node, "children"):
 			node = node.children[index]
