@@ -51,6 +51,7 @@ class ValueRef(object):
 class BaseTree(object):
 	'''
 	Separate database-about operations with B+Tree-about operations.
+	_tree_ref / _get / _insert / _delete are from subclass.
 	'''
 	node_ref_class = None
 	value_ref_class = ValueRef
@@ -64,7 +65,7 @@ class BaseTree(object):
 		self._storage.commit_root_address(self._tree_ref.address)
 
 	def _refresh_tree_ref(self):
-		self._tree_ref = self.node_ref_class(  # be referenced from root node
+		self._tree_ref = self.node_ref_class(  # refresh the view of all tree.
 			address=self._storage.get_root_address())
 
 	def get(self, key):
