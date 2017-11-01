@@ -92,7 +92,7 @@ class _BPlusNode(object):
 		# without any rebalancing necessary, then go that route
 		current = self
 		while current is not None and current.contents[0] == key:
-			if len(current.contents) > minimum:
+			if len(current.contents) > minimum or len(ancestors) == 0:
 				if current.contents[0] == key:
 					index = 0
 				else:
