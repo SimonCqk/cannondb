@@ -5,12 +5,14 @@ This file include:
 - MemoryStorage: Store data into memory.
 '''
 
-from abc import ABCMeta, abstractmethod
 import multiprocessing
 import os
 import struct
+from abc import ABCMeta, abstractmethod
+
 import portalocker
-from .utility import with_metaclass, generate_address, OutOfAddressExcepition
+
+from .utility import with_metaclass, generate_address, OutOfAddressException
 
 
 class Storage(with_metaclass(ABCMeta, object)):
@@ -121,7 +123,7 @@ class FileStorage(Storage):
 
 	def read(self, address):
 		if address - self._file.seek(0) > self._seek_end() - self._file.seek(0):
-			raise OutOfAddressExcepition('Out of address in this file.')
+            raise OutOfAddressException( 'Out of address in this file.' )
 		self._file.seek(address)
 		length = self._read_integer()
 		data = self._file.read(length)

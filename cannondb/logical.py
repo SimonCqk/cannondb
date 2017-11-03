@@ -56,9 +56,7 @@ class BaseTree(object):
 	LEAF = None
 	value_ref_class = ValueRef
 
-	def __init__(self, order, storage):
-		self.order = order
-		self._root = self._bottom = self.LEAF(self)
+    def __init__(self, storage):
 		self._storage = storage
 		self._refresh_tree_ref()
 
