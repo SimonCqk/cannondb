@@ -4,11 +4,6 @@ This file include some utility Classes & functions.
 import random
 
 
-# define some exceptions used only inside cannondb.
-class OutOfAddressException(IOError):
-    pass
-
-
 def generate_address(kwargs: dict):
     '''
     generate a address dynamically according to the length of kwargs..

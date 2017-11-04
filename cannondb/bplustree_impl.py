@@ -258,7 +258,7 @@ class _BPlusLeaf(object):
         self.data.extend(right_sib.data)
         parent.remove(parent_index, ancestors)
 
-    def remove(self, index, ancestors):  # 与bnode不一样
+    def remove(self, index, ancestors):
         minimum = self.tree.order // 2  # 节点内不破坏B+树规则的的最小数目
         if index >= len(self.contents):
             self, index = self.next, 0
@@ -269,7 +269,7 @@ class _BPlusLeaf(object):
         # without any rebalancing necessary, then go that route
         current = self
         while current is not None and current.contents[0] == key:
-            if len(current.contents) > minimum:
+            if len(current.contents) > minimum or len(ancestors) == 0:
                 if current.contents[0] == key:
                     index = 0
                 else:
@@ -281,7 +281,7 @@ class _BPlusLeaf(object):
 
         self.grow(ancestors)
 
-    def insert(self, index, key, data, ancestors):  # 与bnode不一样
+    def insert(self, index, key, data, ancestors):
         self.contents.insert(index, key)
         self.data.insert(index, data)
 
@@ -351,6 +351,11 @@ class BPlusTree(object):
         return list(self._get(key))
 
     def insert(self, key, data):
+        if not isinstance(key,str) or '__str__' not in key.__dict__:
+            try:
+                key=str(key)
+            except NotImplementedError:
+                raise TypeError('key must can be converted to str.')
         path = self._path_to(key)
         node, index = path.pop()
         node.insert(index, key, data, path)
@@ -445,6 +450,8 @@ def test():
     b.remove('a')
     b.remove('b')
     b.insert('dddddd', 1111111111)
+    # b.remove('m')
+    b.insert(111,2)
     print(b.items())
     print(b.keys())
     print(b.values())
