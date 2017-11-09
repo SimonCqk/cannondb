@@ -54,7 +54,6 @@ class BaseTree(object):
     _tree_ref / _get / _insert / _delete are from subclass.
     '''
     node_ref_class = None
-    LEAF = None
     value_ref_class = ValueRef
 
 
