@@ -9,6 +9,7 @@ from abc import abstractmethod
 
 
 class ValueRef(object):
+
     def __init__(self, referent=None, address=0):
         assert 0 <= address < 0xFFFFFFFFFFFFFFFF
         self._referent = referent

@@ -4,6 +4,9 @@ This file include the specific implementation of B+ tree.
 '''
 import bisect
 import operator
+import pickle
+
+from cannondb.logical import ValueRef
 
 
 class __BNode(object):
@@ -303,6 +306,36 @@ class _BPlusLeaf(__BNode):
             self.shrink(ancestors)
 
 
+class _BPLeafRef(ValueRef):
+    '''
+    NOT COMPLETED!!!
+    '''
+    def prepare_to_store(self, storage):
+        if self._referent:
+            self._referent.store_refs(storage)
+
+    # @property
+    def length(self):
+        pass
+
+    @staticmethod
+    def referent_to_string(referent):
+        return pickle.dumps({
+            'tree':referent.tree,
+            'contents': referent.contents,
+            'data': referent.data,
+        })
+
+    @staticmethod
+    def string_to_referent(string):
+        d = pickle.loads(string)
+        return _BPlusLeaf(
+            tree=d['tree'],
+            contents=d['contents'],
+            data=d['data']
+        )
+
+
 class BPlusTree(object):
     LEAF = _BPlusLeaf
     BRANCH = _BPlusBranch
@@ -346,7 +379,7 @@ class BPlusTree(object):
 
         return ancestry
 
-    def _path_to(self, item):  # 根节点到当前节点的路径
+    def _path_to(self, item):
         path = self._path_to_branch(item)
         node, index = path[-1]
         while hasattr(node, "children"):
