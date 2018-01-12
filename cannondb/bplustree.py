@@ -484,23 +484,3 @@ class BPlusTree(object):
 
         return leaves, [s[0] for s in seps]
 
-
-def test():
-    b = BPlusTree(3)
-    b.insert('a', 1)
-    b.insert('b', 2)
-    b.insert('c', 3)
-    b.insert('m', -1)
-    print(b.items())
-    print(b.keys())
-    print(b.values())
-    b.remove('b')
-    # b.remove('m')
-    b.insert(111, 2)
-    print(b.items())
-    print(b.keys())
-    print(b.values())
-    print(b.get('m'))
-
-
-test()

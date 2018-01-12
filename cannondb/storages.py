@@ -1,24 +1,24 @@
 '''
-This file include:
+  This file include:
 - Storage: Abstract base class for all storage implementation.
 - FileStorage: Store data into disk.
 - MemoryStorage: Store data into memory.
 '''
 
-import multiprocessing
 import os
 import struct
+import threading
 from abc import ABCMeta, abstractmethod
 
 import portalocker
 
-from .utility import with_metaclass, generate_address
+from cannondb.utils import with_metaclass, generate_address
 
 
 class Storage(with_metaclass(ABCMeta, object)):
     '''
     Abstract base class for all storage implementation.
-    Subclasses must override all these methods.
+    Subclasses should override all these methods.
     '''
 
     @abstractmethod
@@ -33,8 +33,7 @@ class Storage(with_metaclass(ABCMeta, object)):
     def close(self):
         raise NotImplementedError("Please override this method.")
 
-    # lock() & unlock ensure the data safety under multi-readers/writers
-    # scenarios.
+    # lock() & unlock ensure the data safety under multi-readers/writers scenarios.
     def lock(self):
         pass
 
@@ -104,7 +103,7 @@ class FileStorage(Storage):
         root_address = self._read_integer()
         return root_address
 
-    def write(self, data, address):
+    def write(self, data, address=None):
         self.lock()
         if not address:  # write for the first time, just append.
             self._seek_end()
@@ -126,8 +125,7 @@ class FileStorage(Storage):
         return obj_address
 
     def read(self, address):
-        if address - \
-                self._file.seek(0) > self._seek_end() - self._file.seek(0):
+        if address > self._seek_end() - self._file.seek(0):
             raise EOFError('Out of address in this file.')
         self._file.seek(address)
         length = self._read_integer()
@@ -158,12 +156,12 @@ class MemoryStorage(Storage):
     '''
     Store data just in memory.
     '''
-    __slots__ = ['memory', 'lock']  # to save memory.
+    __slots__ = ['memory', 'lock']  # for saving memory.
 
     def __init__(self):
         super(MemoryStorage, self).__init__()
         self.memory = dict()
-        self.lock = multiprocessing.Lock()
+        self.lock = threading.Lock()
 
     def write(self, data, address):
         with self.lock:

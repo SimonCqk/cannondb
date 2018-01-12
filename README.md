@@ -1,2 +1,2 @@
-# cannondb
-cannondb is a small but compelete &amp; powerful database for human beings !!
+### cannondb
+cannondb is a small but powerful database created for human beings.

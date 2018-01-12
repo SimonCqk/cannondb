@@ -1,5 +1,5 @@
 '''
-This file include some utility Classes & functions.
+  This include some help-functions or classes.
 '''
 import random
 
@@ -7,7 +7,7 @@ import random
 def generate_address(kwargs: dict):
     '''
     generate a address dynamically according to the length of kwargs..
-    :return: unsigned long long int
+    :return: (unsigned long long int)
     '''
     if len(kwargs) < 0xFFFF:
         address = random.randint(0, 0xFFFF)
@@ -26,6 +26,7 @@ def generate_address(kwargs: dict):
 
 # Source:
 # https://github.com/PythonCharmers/python-future/blob/466bfb2dfa36d865285dc31fe2b0c0a53ff0f181/future/utils/__init__.py#L102-L134
+
 
 def with_metaclass(meta, *bases):
     """
