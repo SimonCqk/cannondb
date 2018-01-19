@@ -1,11 +1,10 @@
 '''
-This file include the specific implementation of B+ tree.
+This file include the concrete implementation of B+ tree.
 
 '''
 import bisect
 import operator
 import pickle
-import weakref
 
 from cannondb.logical import ValueRef
 
@@ -22,6 +21,8 @@ class __BNode(object):
             return cls(tree=kwargs.get('tree', node.tree),
                        contents=kwargs.get('contents', node.contents),
                        children=kwargs.get('children', node.children))
+        else:
+            raise TypeError('Invalid parameters passed in.')
 
     def __repr__(self):
         name = getattr(self, "children", 0) and "Branch" or "Leaf"
@@ -33,7 +34,7 @@ class _BPlusBranch(__BNode):
     __slots__ = ("tree", "contents", "children")
 
     def __init__(self, tree, contents=None, children=None):
-        self.tree = weakref.ref(tree)
+        self.tree = tree
         self.contents = contents or []
         self.children = children or []
         if self.children:
@@ -54,7 +55,7 @@ class _BPlusBranch(__BNode):
     def grow(self, ancestors):
         parent, parent_index = ancestors.pop()
 
-        minimum = self.tree().order // 2
+        minimum = self.tree.order // 2
         left_sib = right_sib = None
 
         # try to borrow from the right sibling
@@ -93,7 +94,7 @@ class _BPlusBranch(__BNode):
                 parent.grow(ancestors)
             elif not parent.contents:
                 # parent is root, and its now empty
-                self.tree()._root = left_sib or self
+                self.tree._root = left_sib or self
 
     def shrink(self, ancestors):
         parent = None
@@ -103,7 +104,7 @@ class _BPlusBranch(__BNode):
             # try to lend to the left neighboring sibling
             if parent_index:
                 left_sib = parent.children[parent_index - 1]
-                if len(left_sib.contents) < self.tree().order:
+                if len(left_sib.contents) < self.tree.order:
                     self.lateral(
                         parent, parent_index, left_sib, parent_index - 1)
                     return
@@ -111,22 +112,22 @@ class _BPlusBranch(__BNode):
             # try the right neighbor
             if parent_index + 1 < len(parent.children):
                 right_sib = parent.children[parent_index + 1]
-                if len(right_sib.contents) < self.tree().order:
+                if len(right_sib.contents) < self.tree.order:
                     self.lateral(
                         parent, parent_index, right_sib, parent_index + 1)
                     return
 
-        sibling, push = self.split()
+        sibling, median = self.split()
 
-        if not parent:
-            parent, parent_index = self.tree().BRANCH(
-                tree=self.tree, children=[self]), 0
-            self.tree()._root = parent
+        if not parent:  # this is root node
+            parent, parent_index = self.tree.BRANCH(
+                tree=self.tree, contents=[self]), 0
+            self.tree._root = parent
 
         # pass the median up to the parent
-        parent.contents.insert(parent_index, push)
+        parent.contents.insert(parent_index, median)
         parent.children.insert(parent_index + 1, sibling)
-        if len(parent.contents) > parent.tree().order:
+        if len(parent.contents) > parent.tree.order:
             parent.shrink(ancestors)
 
     def lateral(self, parent, parent_index, dest, dest_index):
@@ -143,11 +144,11 @@ class _BPlusBranch(__BNode):
 
     def insert(self, index, item, ancestors):
         self.contents.insert(index, item)
-        if len(self.contents) > self.tree().order:
+        if len(self.contents) > self.tree.order:
             self.shrink(ancestors)
 
     def remove(self, index, ancestors):
-        minimum = self.tree().order // 2
+        minimum = self.tree.order // 2
 
         if self.children:
             # try promoting from the right subtree first,
@@ -197,7 +198,7 @@ class _BPlusLeaf(__BNode):
             # try to lend to the left neighboring sibling
             if parent_index:
                 left_sib = parent.children[parent_index - 1]
-                if len(left_sib.contents) < self.tree().order:
+                if len(left_sib.contents) < self.tree.order:
                     self.lateral(
                         parent, parent_index, left_sib, parent_index - 1)
                     return
@@ -205,22 +206,23 @@ class _BPlusLeaf(__BNode):
             # try the right neighbor
             if parent_index + 1 < len(parent.children):
                 right_sib = parent.children[parent_index + 1]
-                if len(right_sib.contents) < self.tree().order:
+                if len(right_sib.contents) < self.tree.order:
                     self.lateral(
                         parent, parent_index, right_sib, parent_index + 1)
                     return
-
+        # not returned.
+        # which means self has to split and then rebuild.
         sibling, push = self.split()
 
         if not parent:
-            parent, parent_index = self.tree().BRANCH(
-                tree=self.tree, children=[self]), 0
-            self.tree()._root = parent
+            parent, parent_index = self.tree.BRANCH(
+                tree=self.tree, contents=[self]), 0
+            self.tree._root = parent
 
         # pass the median up to the parent
         parent.contents.insert(parent_index, push)
         parent.children.insert(parent_index + 1, sibling)
-        if len(parent.contents) > parent.tree().order:
+        if len(parent.contents) > parent.tree.order:
             parent.shrink(ancestors)
 
     def lateral(self, parent, parent_index, dest, dest_index):
@@ -246,7 +248,7 @@ class _BPlusLeaf(__BNode):
         return sibling, sibling.contents[0]
 
     def grow(self, ancestors):
-        minimum = self.tree().order // 2
+        minimum = self.tree.order // 2
         parent, parent_index = ancestors.pop()
         left_sib = right_sib = None
 
@@ -277,7 +279,7 @@ class _BPlusLeaf(__BNode):
         parent.remove(parent_index, ancestors)
 
     def remove(self, index, ancestors):
-        minimum = self.tree().order // 2
+        minimum = self.tree.order // 2
         if index >= len(self.contents):
             self, index = self.next, 0
 
@@ -303,13 +305,13 @@ class _BPlusLeaf(__BNode):
         self.contents.insert(index, key)
         self.data.insert(index, data)
 
-        if len(self.contents) > self.tree().order:
+        if len(self.contents) > self.tree.order:
             self.shrink(ancestors)
 
 
 class _BPLeafRef(ValueRef):
     '''
-    NOT COMPLETED!!!
+    TODO complete.
     '''
 
     def prepare_to_store(self, storage):
@@ -342,7 +344,7 @@ class BPlusTree(object):
     LEAF = _BPlusLeaf
     BRANCH = _BPlusBranch
 
-    def __init__(self, order=50):
+    def __init__(self, order=100):
         self.order = order
         self._root = self._bottom = self.LEAF(self)
 
@@ -365,6 +367,9 @@ class BPlusTree(object):
                     return
 
     def _path_to_branch(self, item):
+        '''
+        :return: ancestors:list from root to item node (usually branch node)
+        '''
         current = self._root
         ancestry = []
 
@@ -382,6 +387,9 @@ class BPlusTree(object):
         return ancestry
 
     def _path_to(self, item):
+        '''
+        :return: the complete path from root to item node (leaf node)
+        '''
         path = self._path_to_branch(item)
         node, index = path[-1]
         while hasattr(node, "children"):
@@ -400,11 +408,6 @@ class BPlusTree(object):
         return list(self._get(key))
 
     def insert(self, key, data):
-        if not isinstance(key, str):
-            try:
-                key = str(key)
-            except NotImplementedError:
-                raise TypeError('key must can be converted to str.')
         path = self._path_to(key)
         node, index = path.pop()
         node.insert(index, key, data, path)
