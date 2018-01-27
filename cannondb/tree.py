@@ -1,15 +1,35 @@
-'''
+"""
 This file include the concrete implementation of B+ tree.
 
-'''
+"""
 import bisect
+import math
 import operator
-import pickle
+from abc import abstractmethod
+from collections import namedtuple
 
-from cannondb.logical import ValueRef
+KeyValPair = namedtuple('KeyValPair', ['key', 'value'])
 
 
-class __BNode(object):
+class _Node(object):
+    __slots__ = ()
+
+    @abstractmethod
+    def split(self):
+        pass
+
+    @abstractmethod
+    def grow(self, ancestors):
+        pass
+
+    @abstractmethod
+    def shrink(self, ancestors):
+        pass
+
+    @abstractmethod
+    def lateral(self, parent, parent_index, dest, dest_index):
+        pass
+
     @classmethod
     def from_node(cls, node, **kwargs):
         if 'data' in kwargs:
@@ -25,18 +45,18 @@ class __BNode(object):
             raise TypeError('Invalid parameters passed in.')
 
     def __repr__(self):
-        name = getattr(self, "children", 0) and "Branch" or "Leaf"
+        name = 'Branch' if getattr(self, 'children', None) else 'Leaf'
         return '<{name} {contents}>'.format(
             name=name, contents=', '.join([str(i) for i in self.contents]))
 
 
-class _BPlusBranch(__BNode):
+class _BPlusBranch(_Node):
     __slots__ = ("tree", "contents", "children")
 
     def __init__(self, tree, contents=None, children=None):
         self.tree = tree
-        self.contents = contents or []
-        self.children = children or []
+        self.contents = contents or list()
+        self.children = children or list()
         if self.children:
             assert len(self.contents) + 1 == len(self.children), \
                 "One more child than data item required."
@@ -55,7 +75,7 @@ class _BPlusBranch(__BNode):
     def grow(self, ancestors):
         parent, parent_index = ancestors.pop()
 
-        minimum = self.tree.order // 2
+        minimum = math.ceil(self.tree.order / 2)
         left_sib = right_sib = None
 
         # try to borrow from the right sibling
@@ -148,7 +168,7 @@ class _BPlusBranch(__BNode):
             self.shrink(ancestors)
 
     def remove(self, index, ancestors):
-        minimum = self.tree.order // 2
+        minimum = math.ceil(self.tree.order / 2)
 
         if self.children:
             # try promoting from the right subtree first,
@@ -180,7 +200,7 @@ class _BPlusBranch(__BNode):
                 self.grow(ancestors)
 
 
-class _BPlusLeaf(__BNode):
+class _BPlusLeaf(_Node):
     __slots__ = ("tree", "contents", "data", "next")
 
     def __init__(self, tree, contents=None, data=None, next=None):
@@ -248,7 +268,7 @@ class _BPlusLeaf(__BNode):
         return sibling, sibling.contents[0]
 
     def grow(self, ancestors):
-        minimum = self.tree.order // 2
+        minimum = math.ceil(self.tree.order / 2)
         parent, parent_index = ancestors.pop()
         left_sib = right_sib = None
 
@@ -279,7 +299,7 @@ class _BPlusLeaf(__BNode):
         parent.remove(parent_index, ancestors)
 
     def remove(self, index, ancestors):
-        minimum = self.tree.order // 2
+        minimum = math.ceil(self.tree.order / 2)
         if index >= len(self.contents):
             self, index = self.next, 0
 
@@ -307,37 +327,6 @@ class _BPlusLeaf(__BNode):
 
         if len(self.contents) > self.tree.order:
             self.shrink(ancestors)
-
-
-class _BPLeafRef(ValueRef):
-    '''
-    TODO complete.
-    '''
-
-    def prepare_to_store(self, storage):
-        if self._referent:
-            self._referent.store_refs(storage)
-
-    # @property
-    def length(self):
-        pass
-
-    @staticmethod
-    def referent_to_string(referent):
-        return pickle.dumps({
-            'tree': referent.tree,
-            'contents': referent.contents,
-            'data': referent.data,
-        })
-
-    @staticmethod
-    def string_to_referent(string):
-        d = pickle.loads(string)
-        return _BPlusLeaf(
-            tree=d['tree'],
-            contents=d['contents'],
-            data=d['data']
-        )
 
 
 class BPlusTree(object):
@@ -372,8 +361,7 @@ class BPlusTree(object):
         '''
         current = self._root
         ancestry = []
-
-        while getattr(current, "children", None):
+        while hasattr(current, "children"):
             index = bisect.bisect_left(current.contents, item)
             ancestry.append((current, index))
             if index < len(current.contents) \
@@ -464,7 +452,7 @@ class BPlusTree(object):
         return list(self.itervalues())
 
     def _build_bulk_loaded_leaves(self, items):
-        minimum = self.order // 2
+        minimum = math.ceil(self.tree.order / 2)
         leaves, seps = [[]], []
 
         for item in items:
@@ -488,3 +476,4 @@ class BPlusTree(object):
             leaves[i].next = leaves[i + 1]
 
         return leaves, [s[0] for s in seps]
+

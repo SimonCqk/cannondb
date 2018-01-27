@@ -1,10 +1,10 @@
-'''
+"""
   This file include logical base class for maintain B-plus Tree at the
   bottom of database.
 - ValueRef: referent to a value of node of B+ Tree and provide interface
   of operations which do real manipulations to database.
 - BaseTree: basement of b+ tree.
-'''
+"""
 from abc import abstractmethod
 
 
@@ -49,10 +49,10 @@ class ValueRef(object):
 
 
 class BaseTree(object):
-    '''
+    """
     Separate database-about operations with B+Tree-about operations.
     _tree_ref / _get / _insert / _delete are from subclass.
-    '''
+    """
     node_ref_class = None
     value_ref_class = ValueRef
 

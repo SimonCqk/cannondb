@@ -1,6 +1,6 @@
-from cannondb.bplustree import BPlusTree
+from cannondb.tree import BPlusTree
 
-bpt = BPlusTree()
+bpt = BPlusTree(3)
 
 
 def test():
@@ -8,9 +8,14 @@ def test():
     bpt.insert('bpt', 2)
     bpt.insert('c', 3)
     bpt.insert('m', -1)
+    bpt.insert('l', 12)
+    bpt.insert('k', 13)
+    bpt.insert('asd', 111)
     print(bpt.items())
     print(bpt.keys())
     print(bpt.values())
+
+
 '''
     bpt.remove('bpt')
     bpt.remove('a')
@@ -21,5 +26,5 @@ def test():
     print(bpt.values())
 '''
 
-if __name__=='__main__':
+if __name__ == '__main__':
     test()

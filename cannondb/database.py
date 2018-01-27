@@ -1,6 +1,6 @@
-'''
+"""
 This file include the main interface of cannondb.
-'''
+"""
 from .storages import FileStorage
 
 

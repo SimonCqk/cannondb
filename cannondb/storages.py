@@ -12,10 +12,10 @@ from abc import ABCMeta, abstractmethod
 
 import portalocker
 
-from cannondb.utils import with_metaclass, generate_address
+from cannondb.utils import generate_address
 
 
-class Storage(with_metaclass(ABCMeta, object)):
+class Storage(metaclass=ABCMeta):
     '''
     Abstract base class for all storage implementation.
     Subclasses should override all these methods.
