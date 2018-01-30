@@ -5,9 +5,7 @@ from .storages import FileStorage
 
 
 class CannonDB(object):
-    '''
-
-    '''
+    """   """
     DEFAULT_TABLE = '_default'
     DEFAULT_STORAGE = FileStorage
 

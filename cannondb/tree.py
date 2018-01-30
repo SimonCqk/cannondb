@@ -12,6 +12,7 @@ KeyValPair = namedtuple('KeyValPair', ['key', 'value'])
 
 
 class _Node(object):
+    """Abstract base class of b plus node"""
     __slots__ = ()
 
     @abstractmethod
@@ -46,7 +47,7 @@ class _Node(object):
 
     def __repr__(self):
         name = 'Branch' if getattr(self, 'children', None) else 'Leaf'
-        return '<{name} {contents}>'.format(
+        return '<{name} [{contents}]>'.format(
             name=name, contents=', '.join([str(i) for i in self.contents]))
 
 
@@ -156,7 +157,7 @@ class _BPlusBranch(_Node):
             parent.contents[dest_index] = self.contents.pop(0)
             if self.children:
                 dest.children.append(self.children.pop(0))
-        else:  # lend to the left neighboring sibling
+        else:  # lend to the right neighboring sibling
             dest.contents.insert(0, parent.contents[parent_index])
             parent.contents[parent_index] = self.contents.pop()
             if self.children:
@@ -210,7 +211,7 @@ class _BPlusLeaf(_Node):
         self.next = next  # point to the sibling
         assert len(self.contents) == len(self.data), "one data per key"
 
-    def shrink(self, ancestors):
+    def shrink(self, ancestors=None):
         parent = None
 
         if ancestors:
@@ -321,7 +322,7 @@ class _BPlusLeaf(_Node):
 
         self.grow(ancestors)
 
-    def insert(self, index, key, data, ancestors):
+    def insert(self, index, key, data, ancestors=None):
         self.contents.insert(index, key)
         self.data.insert(index, data)
 

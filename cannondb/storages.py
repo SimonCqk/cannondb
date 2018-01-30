@@ -1,9 +1,8 @@
-'''
-  This file include:
+"""
 - Storage: Abstract base class for all storage implementation.
 - FileStorage: Store data into disk.
 - MemoryStorage: Store data into memory.
-'''
+"""
 
 import os
 import struct
@@ -12,14 +11,14 @@ from abc import ABCMeta, abstractmethod
 
 import portalocker
 
-from cannondb.utils import generate_address
+from cannondb.utils import generate_address, with_metaclass
 
 
-class Storage(metaclass=ABCMeta):
-    '''
+class Storage(with_metaclass(ABCMeta, object)):
+    """
     Abstract base class for all storage implementation.
     Subclasses should override all these methods.
-    '''
+    """
 
     @abstractmethod
     def read(self, address):
