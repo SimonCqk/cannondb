@@ -167,7 +167,7 @@ class _BPlusBranch(_Node):
             self.shrink(ancestors)
 
     def remove(self, index, ancestors=None):
-        minimum = math.ceil(self.tree.order/2)
+        minimum = math.ceil(self.tree.order / 2)
 
         if self.children:
             # try promoting from the right subtree first,
@@ -383,6 +383,11 @@ class BPlusTree(object):
             path.append((node, index))
         return path
 
+    @staticmethod
+    def _present(item, ancestors):
+        last, index = ancestors[-1]
+        return index < len(last.contents) and last.contents[index] == item
+
     def get(self, key, default=None):
         try:
             return next(self._get(key))
@@ -399,8 +404,11 @@ class BPlusTree(object):
 
     def remove(self, key):
         path = self._path_to(key)
-        node, index = path.pop()
-        node.remove(index, path)
+        if self._present(key,path):
+            node, index = path.pop()
+            node.remove(index, path)
+        else:
+            raise ValueError('No such key in tree')
 
     __getitem__ = get
     __setitem__ = insert
@@ -447,4 +455,3 @@ class BPlusTree(object):
 
     def values(self):
         return list(self.itervalues())
-
