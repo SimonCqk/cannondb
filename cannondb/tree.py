@@ -65,15 +65,14 @@ class _BPlusBranch(_Node):
     def split(self):
         center = len(self.contents) // 2
         median = self.contents[center]
-        sibling = _BPlusBranch.from_node(self,
-                                         tree=self.tree,
-                                         contents=self.contents[center + 1:],
-                                         children=self.children[center + 1:])
+        sibling = type(self)(tree=self.tree,
+                             contents=self.contents[center + 1:],
+                             children=self.children[center + 1:])
         self.contents = self.contents[:center]
         self.children = self.children[:center + 1]
         return sibling, median
 
-    def grow(self, ancestors):
+    def grow(self, ancestors=None):
         parent, parent_index = ancestors.pop()
 
         minimum = math.ceil(self.tree.order / 2)
@@ -82,14 +81,14 @@ class _BPlusBranch(_Node):
         # try to borrow from the right sibling
         if parent_index + 1 < len(parent.children):
             right_sib = parent.children[parent_index + 1]
-            if len(right_sib.contents) > minimum:
+            if len(right_sib.contents) >= minimum:
                 right_sib.lateral(parent, parent_index + 1, self, parent_index)
                 return
 
         # try to borrow from the left sibling
         if parent_index:
             left_sib = parent.children[parent_index - 1]
-            if len(left_sib.contents) > minimum:
+            if len(left_sib.contents) >= minimum:
                 left_sib.lateral(parent, parent_index - 1, self, parent_index)
                 return
 
@@ -117,7 +116,7 @@ class _BPlusBranch(_Node):
                 # parent is root, and its now empty
                 self.tree._root = left_sib or self
 
-    def shrink(self, ancestors):
+    def shrink(self, ancestors=None):
         parent = None
 
         if ancestors:
@@ -142,9 +141,8 @@ class _BPlusBranch(_Node):
 
         if not parent:  # this is root node
             parent, parent_index = self.tree.BRANCH(
-                tree=self.tree, contents=[self]), 0
+                tree=self.tree, children=[self]), 0
             self.tree._root = parent
-
         # pass the median up to the parent
         parent.contents.insert(parent_index, median)
         parent.children.insert(parent_index + 1, sibling)
@@ -163,23 +161,23 @@ class _BPlusBranch(_Node):
             if self.children:
                 dest.children.insert(0, self.children.pop())
 
-    def insert(self, index, item, ancestors):
+    def insert(self, index, item, ancestors=None):
         self.contents.insert(index, item)
         if len(self.contents) > self.tree.order:
             self.shrink(ancestors)
 
-    def remove(self, index, ancestors):
-        minimum = math.ceil(self.tree.order / 2)
+    def remove(self, index, ancestors=None):
+        minimum = math.ceil(self.tree.order/2)
 
         if self.children:
             # try promoting from the right subtree first,
             # but only if it won't have to resize
             additional_ancestors = [(self, index + 1)]
             descendant = self.children[index + 1]
-            while descendant.children:
+            while hasattr(descendant, 'children'):
                 additional_ancestors.append((descendant, 0))
                 descendant = descendant.children[0]
-            if len(descendant.contents) > minimum:
+            if len(descendant.contents) >= minimum:
                 ancestors.extend(additional_ancestors)
                 self.contents[index] = descendant.contents[0]
                 descendant.remove(0, ancestors)
@@ -188,7 +186,7 @@ class _BPlusBranch(_Node):
             # fall back to the left child
             additional_ancestors = [(self, index)]
             descendant = self.children[index]
-            while descendant.children:
+            while hasattr(descendant, 'children'):
                 additional_ancestors.append(
                     (descendant, len(descendant.children) - 1))
                 descendant = descendant.children[-1]
@@ -237,7 +235,7 @@ class _BPlusLeaf(_Node):
 
         if not parent:
             parent, parent_index = self.tree.BRANCH(
-                tree=self.tree, contents=[self]), 0
+                tree=self.tree, children=[self]), 0
             self.tree._root = parent
 
         # pass the median up to the parent
@@ -258,11 +256,10 @@ class _BPlusLeaf(_Node):
 
     def split(self):
         center = len(self.contents) // 2
-        sibling = _BPlusLeaf.from_node(self,
-                                       tree=self.tree,
-                                       contents=self.contents[center:],
-                                       data=self.data[center:],
-                                       next=self.next)
+        sibling = type(self)(tree=self.tree,
+                             contents=self.contents[center:],
+                             data=self.data[center:],
+                             next=self.next)
         self.contents = self.contents[:center]
         self.data = self.data[:center]
         self.next = sibling
@@ -276,14 +273,14 @@ class _BPlusLeaf(_Node):
         # try borrowing from a neighbor - try right first
         if parent_index + 1 < len(parent.children):
             right_sib = parent.children[parent_index + 1]
-            if len(right_sib.contents) > minimum:
+            if len(right_sib.contents) >= minimum:
                 right_sib.lateral(parent, parent_index + 1, self, parent_index)
                 return
 
         # fallback to left
         if parent_index:
             left_sib = parent.children[parent_index - 1]
-            if len(left_sib.contents) > minimum:
+            if len(left_sib.contents) >= minimum:
                 left_sib.lateral(parent, parent_index - 1, self, parent_index)
                 return
 
@@ -307,10 +304,10 @@ class _BPlusLeaf(_Node):
         key = self.contents[index]
 
         # if any leaf that could accept the key can do so
-        # without any rebalancing necessary, then go that route
+        # without any rebalancing necessity, then go that route
         current = self
         while current is not None and current.contents[0] == key:
-            if len(current.contents) > minimum or len(ancestors) == 0:
+            if len(current.contents) >= minimum or len(ancestors) == 0:
                 if current.contents[0] == key:
                     index = 0
                 else:
@@ -319,7 +316,6 @@ class _BPlusLeaf(_Node):
                 current.data.pop(index)
                 return
             current = current.next
-
         self.grow(ancestors)
 
     def insert(self, index, key, data, ancestors=None):
@@ -357,9 +353,9 @@ class BPlusTree(object):
                     return
 
     def _path_to_branch(self, item):
-        '''
+        """
         :return: ancestors:list from root to item node (usually branch node)
-        '''
+        """
         current = self._root
         ancestry = []
         while hasattr(current, "children"):
@@ -376,9 +372,9 @@ class BPlusTree(object):
         return ancestry
 
     def _path_to(self, item):
-        '''
+        """
         :return: the complete path from root to item node (leaf node)
-        '''
+        """
         path = self._path_to_branch(item)
         node, index = path[-1]
         while hasattr(node, "children"):
@@ -451,30 +447,4 @@ class BPlusTree(object):
 
     def values(self):
         return list(self.itervalues())
-
-    def _build_bulk_loaded_leaves(self, items):
-        minimum = math.ceil(self.tree.order / 2)
-        leaves, seps = [[]], []
-
-        for item in items:
-            if len(leaves[-1]) >= self.order:
-                seps.append(item)
-                leaves.append([])
-            leaves[-1].append(item)
-
-        if len(leaves[-1]) < minimum and seps:
-            last_two = leaves[-2] + leaves[-1]
-            leaves[-2] = last_two[:minimum]
-            leaves[-1] = last_two[minimum:]
-            seps.append(last_two[minimum])
-
-        leaves = [self.LEAF(self,
-                            contents=[p[0] for p in pairs],
-                            data=[p[1] for p in pairs])
-                  for pairs in leaves]
-
-        for i in range(len(leaves) - 1):
-            leaves[i].next = leaves[i + 1]
-
-        return leaves, [s[0] for s in seps]
 
