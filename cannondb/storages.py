@@ -4,6 +4,7 @@
 - MemoryStorage: Store data into memory.
 """
 
+import multiprocessing
 import os
 import struct
 import threading
@@ -152,15 +153,15 @@ class FileStorage(Storage):
 
 
 class MemoryStorage(Storage):
-    '''
+    """
     Store data just in memory.
-    '''
-    __slots__ = ['memory', 'lock']  # for saving memory.
+    """
+    __slots__ = ['memory', 'lock']
 
-    def __init__(self):
+    def __init__(self, *, multi_process=False):
         super(MemoryStorage, self).__init__()
         self.memory = dict()
-        self.lock = threading.Lock()
+        self.lock = threading.Lock() if not multi_process else multiprocessing.Lock()
 
     def write(self, data, address):
         with self.lock:

@@ -306,8 +306,8 @@ class _BPlusLeaf(_Node):
         # if any leaf that could accept the key can do so
         # without any rebalancing necessity, then go that route
         current = self
-        while current is not None and current.contents[0] == key:
-            if len(current.contents) >= minimum or len(ancestors) == 0:
+        while current is not None and current.contents[index] == key:
+            if len(current.contents) >= minimum or not ancestors:
                 if current.contents[0] == key:
                     index = 0
                 else:
@@ -383,11 +383,6 @@ class BPlusTree(object):
             path.append((node, index))
         return path
 
-    @staticmethod
-    def _present(item, ancestors):
-        last, index = ancestors[-1]
-        return index < len(last.contents) and last.contents[index] == item
-
     def get(self, key, default=None):
         try:
             return next(self._get(key))
@@ -403,12 +398,12 @@ class BPlusTree(object):
         node.insert(index, key, data, path)
 
     def remove(self, key):
-        path = self._path_to(key)
-        if self._present(key,path):
+        if key in self:
+            path = self._path_to(key)
             node, index = path.pop()
             node.remove(index, path)
         else:
-            raise ValueError('No such key in tree')
+            raise ValueError('key \'{key}\' does not exist.'.format(key=key))
 
     __getitem__ = get
     __setitem__ = insert
