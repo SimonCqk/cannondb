@@ -64,10 +64,32 @@ def test_tree_massive_remove():
     assert tree.count == 0 and len(items) == 0
 
 
+def test_get_key():
+    for i in range(10):
+        tree.insert(str(i), i)
+    print(tree.get('1'))
+    for i in range(10):
+        tree.remove(str(i))
+
+
+def test_iter_funcs():
+    for i in range(10):
+        tree.insert(str(i), i)
+    print(tree.keys())
+    print(tree.values())
+    print(tree.items())
+    for i in range(10):
+        tree.remove(str(i))
+
+
 if __name__ == '__main__':
+    '''
     test_insert()
     test_remove()
     test_exist_insert()
     test_non_exist_remove()
     test_tree_massive_insert()
     test_tree_massive_remove()
+    test_get_key()
+    '''
+    test_iter_funcs()

@@ -1,6 +1,7 @@
 import bisect
 import math
 from abc import ABCMeta
+from functools import partial
 
 
 class _BNode(metaclass=ABCMeta):
@@ -222,15 +223,50 @@ class BTree(object):
             node.insert(index, key, value, ancestors)
         self._count += 1
 
-    def remove(self, item):
-        ancestors = self._path_to(item)
+    def remove(self, key):
+        ancestors = self._path_to(key)
 
-        if BTree._present(item, ancestors):
+        if BTree._present(key, ancestors):
             node, index = ancestors.pop()
             node.remove(index, ancestors)
         else:
-            raise ValueError('%r not in %s' % (item, self.__class__.__name__))
+            raise ValueError('%r not in %s' % (key, self.__class__.__name__))
         self._count -= 1
+
+    def _get(self, key):
+        ancestor = self._path_to(key)
+        node, index = ancestor[-1]
+        if BTree._present(key, ancestor):
+            yield node.values[index]
+        else:
+            raise StopIteration
+
+    def get(self, key, default=None):
+        try:
+            return next(self._get(key))
+        except StopIteration:
+            return default
+
+    def iteritems(self):
+        for item in self:
+            yield item
+
+    def iterkeys(self):
+        for key, _ in self:
+            yield key
+
+    def itervalues(self):
+        for _, value in self:
+            yield value
+
+    def keys(self):
+        return list(self.iterkeys())
+
+    def values(self):
+        return list(self.itervalues())
+
+    def items(self):
+        return list(self.iteritems())
 
     def __contains__(self, key):
         return BTree._present(key, self._path_to(key))
@@ -260,6 +296,10 @@ class BTree(object):
         _all = list()
         recurse(self._root, _all, 0)
         return '\n'.join(_all)
+
+    __getitem__ = get
+    __setitem__ = partial(insert, override=False)
+    __delitem__ = remove
 
     @classmethod
     def bulk_load(cls, key_val_pairs, order):
