@@ -72,7 +72,7 @@ def test_get_key():
         tree.remove(str(i))
 
 
-def test_iter_funcs():
+def test_iter_methods():
     for i in range(10):
         tree.insert(str(i), i)
     print(tree.keys())
@@ -80,6 +80,15 @@ def test_iter_funcs():
     print(tree.items())
     for i in range(10):
         tree.remove(str(i))
+
+
+def test_item_methods():
+    tree['100'] = 100
+    tree['200'] = 200
+    print(tree['100'])
+    print(tree['200'])
+    del tree['100']
+    del tree['200']
 
 
 if __name__ == '__main__':
@@ -91,5 +100,6 @@ if __name__ == '__main__':
     test_tree_massive_insert()
     test_tree_massive_remove()
     test_get_key()
+    test_iter_methods()
     '''
-    test_iter_funcs()
+    test_item_methods()

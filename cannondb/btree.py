@@ -1,7 +1,7 @@
 import bisect
 import math
 from abc import ABCMeta
-from functools import partial
+from typing import Iterable
 
 
 class _BNode(metaclass=ABCMeta):
@@ -14,7 +14,7 @@ class _BNode(metaclass=ABCMeta):
         self.children = children or []
         if self.children:
             assert len(self.keys) + 1 == len(self.children), \
-                'one more child than data item required'
+                'One more child than data item required'
 
     def __repr__(self):
         name = 'Branch' if getattr(self, 'children', None) else 'Leaf'
@@ -22,6 +22,9 @@ class _BNode(metaclass=ABCMeta):
             name=name, pairs=str(zip(self.keys, self.values)))
 
     def lateral(self, parent, parent_index, target, target_index):
+        """
+        lend one element from parent[parent_index] to target[target_index].
+        """
         if parent_index > target_index:
             target.keys.append(parent.keys[target_index])
             target.values.append(parent.values[target_index])
@@ -37,7 +40,11 @@ class _BNode(metaclass=ABCMeta):
             if self.children:
                 target.children.insert(0, self.children.pop())
 
-    def shrink(self, ancestors):
+    def shrink(self, ancestors: list):
+        """
+        shrink from current node up to the root until tree is balanced.
+        :param ancestors: ancestors from root to current node
+        """
         parent = None
 
         if ancestors:
@@ -72,11 +79,14 @@ class _BNode(metaclass=ABCMeta):
         if len(parent.keys) > parent.tree.order:
             parent.shrink(ancestors)
 
-    def grow(self, ancestors):
+    def grow(self, ancestors: list):
+        """
+        grow from current node up to the root until tree is balanced,
+        by trying borrowing items from siblings or consolidate with siblings.
+        :param ancestors: ancestors from root to current node
+        """
         parent, parent_index = ancestors.pop()
-
         left_sib = right_sib = None
-
         # try to borrow from the right sibling
         if parent_index + 1 < len(parent.children):
             right_sib = parent.children[parent_index + 1]
@@ -122,6 +132,10 @@ class _BNode(metaclass=ABCMeta):
                 self.tree._root = left_sib or self
 
     def split(self):
+        """
+        split this node into two parts
+        :returns: new node and median elements
+        """
         center = len(self.keys) // 2
         mid_key = self.keys[center]
         mid_val = self.values[center]
@@ -185,6 +199,10 @@ class BTree(object):
         self._count = 0
 
     def _path_to(self, key):
+        """
+        get the path from root to node which contains key.
+        :return: list of node-path from root to key-node.
+        """
         current = self._root
         ancestry = []
 
@@ -202,11 +220,20 @@ class BTree(object):
         return ancestry
 
     @staticmethod
-    def _present(key, ancestors):
+    def _present(key, ancestors) -> bool:
+        """
+        judge is key exist in this tree.
+        """
         last, index = ancestors[-1]
         return index < len(last.keys) and last.keys[index] == key
 
     def insert(self, key, value, override=False):
+        """
+        :param key: key to be inserted
+        :param value: value to be inserted corresponding to the key
+        :param override: if override is true and key has existed, the new
+                         value will override the old one.
+        """
         ancestors = self._path_to(key)
         node, index = ancestors[-1]
         if BTree._present(key, ancestors):
@@ -222,6 +249,20 @@ class BTree(object):
             node, index = ancestors.pop()
             node.insert(index, key, value, ancestors)
         self._count += 1
+
+    def multi_insert(self, pairs: Iterable, override=False):
+        """
+        insert a batch of key-value pair at one time.
+        """
+        if not isinstance(pairs, Iterable):
+            raise TypeError('pairs should be a iterable object')
+        elif isinstance(pairs, (tuple, list, set)):
+            sorted(pairs, key=lambda it: it[0])  # sort by key
+            for key, value in pairs:
+                self.insert(key, value, override)
+        elif isinstance(pairs, dict):
+            for key, value in pairs.items():
+                self.insert(key, value, override)
 
     def remove(self, key):
         ancestors = self._path_to(key)
@@ -242,6 +283,11 @@ class BTree(object):
             raise StopIteration
 
     def get(self, key, default=None):
+        """
+        :param key: key expected to be searched in the tree.
+        :param default: if key doesn't exist, return default.
+        :return: value corresponding to the key if key exists.
+        """
         try:
             return next(self._get(key))
         except StopIteration:
@@ -259,13 +305,13 @@ class BTree(object):
         for _, value in self:
             yield value
 
-    def keys(self):
+    def keys(self) -> list:
         return list(self.iterkeys())
 
-    def values(self):
+    def values(self) -> list:
         return list(self.itervalues())
 
-    def items(self):
+    def items(self) -> list:
         return list(self.iteritems())
 
     def __contains__(self, key):
@@ -297,12 +343,20 @@ class BTree(object):
         recurse(self._root, _all, 0)
         return '\n'.join(_all)
 
+    def __len__(self):
+        return self.count
+
+    def __setitem__(self, key, value):
+        self.insert(key, value)
+
     __getitem__ = get
-    __setitem__ = partial(insert, override=False)
     __delitem__ = remove
 
     @classmethod
-    def bulk_load(cls, key_val_pairs, order):
+    def bulk_load(cls, key_val_pairs: Iterable, order=100):
+        """
+        build a complete B-tree by a set of key-value pairs.
+        """
         tree = object.__new__(cls)
         tree.order = order
 
