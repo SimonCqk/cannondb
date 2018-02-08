@@ -4,30 +4,35 @@ from abc import ABCMeta
 
 
 class _BNode(metaclass=ABCMeta):
-    __slots__ = ("tree", "contents", "children")
+    __slots__ = ('tree', 'keys', 'values', 'children')
 
-    def __init__(self, tree, contents=None, children=None):
+    def __init__(self, tree, keys=None, values=None, children=None):
         self.tree = tree
-        self.contents = contents or []
+        self.keys = keys or []
+        self.values = values or []
         self.children = children or []
         if self.children:
-            assert len(self.contents) + 1 == len(self.children), \
-                "one more child than data item required"
+            assert len(self.keys) + 1 == len(self.children), \
+                'one more child than data item required'
 
     def __repr__(self):
-        name = 'Branch' if hasattr(self, 'children') else 'Leaf'
-        return '<{name} [{contents}]>'.format(
-            name=name, contents=', '.join([str(i) for i in self.contents]))
+        name = 'Branch' if getattr(self, 'children', None) else 'Leaf'
+        return '<{name} [{pairs}]>'.format(
+            name=name, pairs=str(zip(self.keys, self.values)))
 
     def lateral(self, parent, parent_index, target, target_index):
         if parent_index > target_index:
-            target.contents.append(parent.contents[target_index])
-            parent.contents[target_index] = self.contents.pop(0)
+            target.keys.append(parent.keys[target_index])
+            target.values.append(parent.values[target_index])
+            parent.keys[target_index] = self.keys.pop(0)
+            parent.values[target_index] = self.values.pop(0)
             if self.children:
                 target.children.append(self.children.pop(0))
         else:
-            target.contents.insert(0, parent.contents[parent_index])
-            parent.contents[parent_index] = self.contents.pop()
+            target.keys.insert(0, parent.keys[parent_index])
+            target.values.insert(0, parent.values[parent_index])
+            parent.keys[parent_index] = self.keys.pop()
+            parent.values[parent_index] = self.values.pop()
             if self.children:
                 target.children.insert(0, self.children.pop())
 
@@ -39,7 +44,7 @@ class _BNode(metaclass=ABCMeta):
             # try to lend to the left neighboring sibling
             if parent_index:
                 left_sib = parent.children[parent_index - 1]
-                if len(left_sib.contents) < self.tree.order:
+                if len(left_sib.keys) < self.tree.order:
                     self.lateral(
                         parent, parent_index, left_sib, parent_index - 1)
                     return
@@ -47,12 +52,12 @@ class _BNode(metaclass=ABCMeta):
             # try the right neighbor
             if parent_index + 1 < len(parent.children):
                 right_sib = parent.children[parent_index + 1]
-                if len(right_sib.contents) < self.tree.order:
+                if len(right_sib.keys) < self.tree.order:
                     self.lateral(
                         parent, parent_index, right_sib, parent_index + 1)
                     return
 
-        sibling, push = self.split()
+        sibling, mid_key, mid_val = self.split()
 
         if not parent:
             parent, parent_index = self.tree.BRANCH(
@@ -60,9 +65,10 @@ class _BNode(metaclass=ABCMeta):
             self.tree._root = parent
 
         # pass the median up to the parent
-        parent.contents.insert(parent_index, push)
+        parent.keys.insert(parent_index, mid_key)
+        parent.values.insert(parent_index, mid_val)
         parent.children.insert(parent_index + 1, sibling)
-        if len(parent.contents) > parent.tree.order:
+        if len(parent.keys) > parent.tree.order:
             parent.shrink(ancestors)
 
     def grow(self, ancestors):
@@ -73,55 +79,65 @@ class _BNode(metaclass=ABCMeta):
         # try to borrow from the right sibling
         if parent_index + 1 < len(parent.children):
             right_sib = parent.children[parent_index + 1]
-            if len(right_sib.contents) > self.tree.min_elements:
+            if len(right_sib.keys) > self.tree.min_elements:
                 right_sib.lateral(parent, parent_index + 1, self, parent_index)
                 return
 
         # try to borrow from the left sibling
         if parent_index:
             left_sib = parent.children[parent_index - 1]
-            if len(left_sib.contents) > self.tree.min_elements:
+            if len(left_sib.keys) > self.tree.min_elements:
                 left_sib.lateral(parent, parent_index - 1, self, parent_index)
                 return
 
         # consolidate with a sibling - try left first
         if left_sib:
-            left_sib.contents.append(parent.contents[parent_index - 1])
-            left_sib.contents.extend(self.contents)
+            left_sib.keys.append(parent.keys[parent_index - 1])
+            left_sib.keys.extend(self.keys)
+            left_sib.values.append(parent.values[parent_index - 1])
+            left_sib.values.extend(self.values)
             if self.children:
                 left_sib.children.extend(self.children)
-            parent.contents.pop(parent_index - 1)
+            parent.keys.pop(parent_index - 1)
+            parent.values.pop(parent_index - 1)
             parent.children.pop(parent_index)
         else:
-            self.contents.append(parent.contents[parent_index])
-            self.contents.extend(right_sib.contents)
+            self.keys.append(parent.keys[parent_index])
+            self.keys.extend(right_sib.keys)
+            self.values.append(parent.keys[parent_index])
+            self.values.extend(right_sib.values)
             if self.children:
                 self.children.extend(right_sib.children)
-            parent.contents.pop(parent_index)
+            parent.keys.pop(parent_index)
+            parent.values.pop(parent_index)
             parent.children.pop(parent_index + 1)
 
-        if len(parent.contents) < self.tree.min_elements:
+        if len(parent.keys) < self.tree.min_elements:
             if ancestors:
                 # parent is not the root
                 parent.grow(ancestors)
-            elif not parent.contents:
-                # parent is root, and its now empty
+            elif not parent.keys:
+                # parent is root, and it's now empty
                 self.tree._root = left_sib or self
 
     def split(self):
-        center = len(self.contents) // 2
-        median = self.contents[center]
+        center = len(self.keys) // 2
+        mid_key = self.keys[center]
+        mid_val = self.values[center]
         sibling = type(self)(
             self.tree,
-            self.contents[center + 1:],
+            self.keys[center + 1:],
+            self.values[center + 1:],
             self.children[center + 1:])
-        self.contents = self.contents[:center]
+        self.keys = self.keys[:center]
+        self.values = self.values[:center]
         self.children = self.children[:center + 1]
-        return sibling, median
+        return sibling, mid_key, mid_val
 
-    def insert(self, index, item, ancestors):
-        self.contents.insert(index, item)
-        if len(self.contents) > self.tree.order:
+    def insert(self, index, key, value, ancestors):
+        self.keys.insert(index, key)
+        self.values.insert(index, value)
+        if len(self.keys) > self.tree.order:
             self.shrink(ancestors)
 
     def remove(self, index, ancestors):
@@ -134,9 +150,10 @@ class _BNode(metaclass=ABCMeta):
             while descendant.children:
                 additional_ancestors.append((descendant, 0))
                 descendant = descendant.children[0]
-            if len(descendant.contents) > self.tree.min_elements:
+            if len(descendant.keys) > self.tree.min_elements:
                 ancestors.extend(additional_ancestors)
-                self.contents[index] = descendant.contents[0]
+                self.keys[index] = descendant.keys[0]
+                self.values[index] = descendant.values[0]
                 descendant.remove(0, ancestors)
                 return
 
@@ -148,11 +165,13 @@ class _BNode(metaclass=ABCMeta):
                     (descendant, len(descendant.children) - 1))
                 descendant = descendant.children[-1]
             ancestors.extend(additional_ancestors)
-            self.contents[index] = descendant.contents[-1]
+            self.keys[index] = descendant.keys[-1]
+            self.values[index] = descendant.values[-1]
             descendant.remove(len(descendant.children) - 1, ancestors)
         else:
-            self.contents.pop(index)
-            if len(self.contents) < self.tree.min_elements and ancestors:
+            self.keys.pop(index)
+            self.values.pop(index)
+            if len(self.keys) < self.tree.min_elements and ancestors:
                 self.grow(ancestors)
 
 
@@ -164,43 +183,43 @@ class BTree(object):
         self._root = self._bottom = self.LEAF(self)
         self._count = 0
 
-    def _path_to(self, item):
+    def _path_to(self, key):
         current = self._root
         ancestry = []
 
         while getattr(current, 'children', None):
-            index = bisect.bisect_left(current.contents, item)
+            index = bisect.bisect_left(current.keys, key)
             ancestry.append((current, index))
-            if index < len(current.contents) \
-                    and current.contents[index] == item:
+            if index < len(current.keys) \
+                    and current.keys[index] == key:
                 return ancestry
             current = current.children[index]
 
-        index = bisect.bisect_left(current.contents, item)
+        index = bisect.bisect_left(current.keys, key)
         ancestry.append((current, index))
 
         return ancestry
 
     @staticmethod
-    def _present(item, ancestors):
+    def _present(key, ancestors):
         last, index = ancestors[-1]
-        return index < len(last.contents) and last.contents[index] == item
+        return index < len(last.keys) and last.keys[index] == key
 
-    def insert(self, item, override=False):
-        ancestors = self._path_to(item)
+    def insert(self, key, value, override=False):
+        ancestors = self._path_to(key)
         node, index = ancestors[-1]
-        if BTree._present(item, ancestors):
+        if BTree._present(key, ancestors):
             if not override:
-                raise ValueError('{key} has existed'.format(key=item))
+                raise ValueError('{key} has existed'.format(key=key))
             else:
-                node[index] = item
+                node.values[index] = value
         else:
-            while getattr(node, "children", None):
+            while getattr(node, 'children', None):
                 node = node.children[index]
-                index = bisect.bisect_left(node.contents, item)
+                index = bisect.bisect_left(node.keys, key)
                 ancestors.append((node, index))
             node, index = ancestors.pop()
-            node.insert(index, item, ancestors)
+            node.insert(index, key, value, ancestors)
         self._count += 1
 
     def remove(self, item):
@@ -213,47 +232,46 @@ class BTree(object):
             raise ValueError('%r not in %s' % (item, self.__class__.__name__))
         self._count -= 1
 
-    def __contains__(self, item):
-        return BTree._present(item, self._path_to(item))
+    def __contains__(self, key):
+        return BTree._present(key, self._path_to(key))
 
     def __iter__(self):
         def _recurse(node):
             if node.children:
-                for child, it in zip(node.children, node.contents):
+                for child, it in zip(node.children, zip(node.keys, node.values)):
                     for child_item in _recurse(child):
                         yield child_item
                     yield it
                 for child_item in _recurse(node.children[-1]):
                     yield child_item
             else:
-                for it in node.contents:
+                for it in zip(node.keys, node.values):
                     yield it
 
         for item in _recurse(self._root):
             yield item
 
     def __repr__(self):
-        def recurse(node, accum, depth):
-            accum.append(("  " * depth) + repr(node))
+        def recurse(node, all_items, depth):
+            all_items.append((' ' * depth) + repr(node))
             for node in getattr(node, "children", list()):
-                recurse(node, accum, depth + 1)
+                recurse(node, all_items, depth + 1)
 
-        _accum = list()
-        recurse(self._root, _accum, 0)
-        return '\n'.join(_accum)
+        _all = list()
+        recurse(self._root, _all, 0)
+        return '\n'.join(_all)
 
-    '''
     @classmethod
-    def bulkload(cls, items, order):
+    def bulk_load(cls, key_val_pairs, order):
         tree = object.__new__(cls)
         tree.order = order
 
-        leaves = tree._build_bulkloaded_leaves(items)
-        tree._build_bulkloaded_branches(*leaves)
+        leaves = tree._build_bulk_loaded_leaves(key_val_pairs)
+        tree._build_bulk_loaded_branches(*leaves)
 
         return tree
 
-    def _build_bulkloaded_leaves(self, items):
+    def _build_bulk_loaded_leaves(self, items):
         leaves, seps = [[]], []
 
         for item in items:
@@ -269,9 +287,9 @@ class BTree(object):
             leaves[-1] = last_two[self.tree.min_elements + 1:]
             seps.append(last_two[self.tree.min_elements])
 
-        return [self.LEAF(self, contents=node) for node in leaves], seps
+        return [self.LEAF(self, keys=node) for node in leaves], seps
 
-    def _build_bulkloaded_branches(self, leaves, seps):
+    def _build_bulk_loaded_branches(self, leaves, seps):
         levels = [leaves]
 
         while len(seps) > self.order + 1:
@@ -293,13 +311,12 @@ class BTree(object):
             offset = 0
             for i, node in enumerate(nodes):
                 children = levels[-1][offset:offset + len(node) + 1]
-                nodes[i] = self.BRANCH(self, contents=node, children=children)
+                nodes[i] = self.BRANCH(self, keys=node, children=children)
                 offset += len(node) + 1
 
             levels.append(nodes)
 
-        self._root = self.BRANCH(self, contents=seps, children=levels[-1])
-    '''
+        self._root = self.BRANCH(self, keys=seps, children=levels[-1])
 
     @property
     def order(self):
