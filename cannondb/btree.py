@@ -1,7 +1,61 @@
 import bisect
 import math
+import struct
 from abc import ABCMeta
 from typing import Iterable
+
+from cannondb.const import (KEY_LENGTH_LIMIT, KEY_LENGTH_FORMAT, VALUE_LENGTH_FORMAT, VALUE_LENGTH_LIMIT, \
+                            TreeConf)
+
+
+class KeyValPair(metaclass=ABCMeta):
+    __slots__ = ('key', 'value', 'length', 'tree_conf')
+
+    def __init__(self, tree_conf: TreeConf, key=None, value=None, data: bytes = None):
+        self.tree_conf = tree_conf
+        self.key = key
+        if key:
+            assert len(key) <= self.tree_conf.key_size
+        if value:
+            assert len(value) <= self.tree_conf.value_size
+        self.value = value
+        self.length = (KEY_LENGTH_LIMIT + self.tree_conf.key_size
+                       + VALUE_LENGTH_LIMIT + self.tree_conf.value_size)
+        if data:
+            self.load(data)
+
+    def load(self, data: bytes):
+        assert len(data) == self.length
+        key_len = struct.unpack(KEY_LENGTH_FORMAT, data[0:KEY_LENGTH_LIMIT])[0]
+
+        assert 0 <= key_len <= self.tree_conf.key_size
+
+        key_end = KEY_LENGTH_LIMIT + key_len
+        self.key = data[key_len:key_end].decode('utf-8')
+
+        val_len_start = key_end + self.tree_conf.key_size
+        val_len_end = val_len_start + VALUE_LENGTH_LIMIT
+        val_len = struct.unpack(VALUE_LENGTH_FORMAT, data[val_len_start:val_len_end])[0]
+
+        assert 0 <= val_len <= self.tree_conf.value_size
+        val_end = val_len_end + val_len
+        self.value = self.tree_conf.serializer.deserialize(data[val_len_end:val_end])
+
+    def dump(self) -> bytes:
+        assert self.key and self.value
+        key_as_bytes = self.tree_conf.serializer.serialize(self.key)
+        key_len = len(key_as_bytes)
+        val_as_bytes = self.tree_conf.serializer.serialize(self.value)
+        val_len = len(val_as_bytes)
+        data = (
+                struct.pack(KEY_LENGTH_FORMAT, key_len) +
+                key_as_bytes +
+                bytes(self.tree_conf.key_size - key_len) +
+                struct.pack(VALUE_LENGTH_FORMAT, val_len) +
+                val_as_bytes +
+                bytes(self.tree_conf.value_size - val_len)
+        )
+        return data
 
 
 class _BNode(metaclass=ABCMeta):
