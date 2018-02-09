@@ -9,19 +9,6 @@ class SerializerError(Exception):
     pass
 
 
-def serializer_type_switch(t: Type[Union[int, float, str]]):
-    """return corresponding serializer to arg type"""
-    type_map = {
-        int: IntSerializer,
-        float: FloatSerializer,
-        str: StrSerializer
-    }
-    try:
-        return type_map[t]
-    except TypeError:
-        raise SerializerError('No corresponding serializer')
-
-
 class Serializer(metaclass=ABCMeta):
     __slots__ = []
 
@@ -56,7 +43,7 @@ class FloatSerializer(Serializer):
         return struct.pack(FLOAT_FORMAT, obj)
 
     def deserialize(self, data: bytes) -> float:
-        return struct.unpack(FLOAT_FORMAT, data)
+        return struct.unpack(FLOAT_FORMAT, data)[0]
 
 
 class StrSerializer(Serializer):
@@ -67,3 +54,19 @@ class StrSerializer(Serializer):
 
     def deserialize(self, data: bytes) -> str:
         return data.decode(encoding='utf-8')
+
+
+# make it a global var
+type_map = {
+    int: IntSerializer,
+    float: FloatSerializer,
+    str: StrSerializer
+}
+
+
+def serializer_type_switch(t: Type[Union[int, float, str]]):
+    """return corresponding serializer to arg type"""
+    try:
+        return type_map[t]
+    except TypeError:
+        raise SerializerError('No corresponding serializer')
