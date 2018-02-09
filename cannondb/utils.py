@@ -1,27 +1,66 @@
 """
-  This include some help-functions or classes.
+  This include some helper-functions or classes.
 """
-import random
 
 
-def generate_address(kwargs: dict):
+def generate_address(data):
     """
-    generate a address dynamically according to the length of kwargs..
-    :return: (unsigned long long int)
+    generate a address dynamically by hashing.
     """
-    if len(kwargs) < 0xFFFF:
-        address = random.randint(0, 0xFFFF)
-        while address in kwargs.keys():
-            address = random.randint(0, 0xFFFF)
-    elif len(kwargs) < 0xFFFFFFFF:
-        address = random.randint(0xFFFF, 0xFFFFFFFF)
-        while address in kwargs.keys():
-            address = random.randint(0xFFFF, 0xFFFFFFFF)
-    else:
-        address = random.randint(0xFFFFFFFF, 0xFFFFFFFFFFFF - 1)
-        while address in kwargs.keys():
-            address = random.randint(0xFFFFFFFF, 0xFFFFFFFFFFFF - 1)
-    return address
+    if not isinstance(data, str):
+        data = str(data)
+    return hash(data) ^ (hash(data) >> 2)
+
+
+class LRUCache(dict):
+
+    def __init__(self, *args, **kwargs):
+        """
+        :param capacity: How many items to store before cleaning up old items
+                         or ``None`` for an unlimited cache size
+        """
+
+        self.capacity = kwargs.pop('capacity', None) or float('nan')
+        self.lru = []
+
+        super(LRUCache, self).__init__(*args, **kwargs)
+
+    def refresh(self, key):
+        """
+        Push a key to the tail of the LRU queue
+        """
+        if key in self.lru:
+            self.lru.remove(key)
+        self.lru.append(key)
+
+    def get(self, key, default=None):
+        item = super(LRUCache, self).get(key, default)
+        self.refresh(key)
+
+        return item
+
+    def __getitem__(self, key):
+        item = super(LRUCache, self).__getitem__(key)
+        self.refresh(key)
+
+        return item
+
+    def __setitem__(self, key, value):
+        super(LRUCache, self).__setitem__(key, value)
+
+        self.refresh(key)
+
+        # Check, if the cache is full and we have to remove old items
+        if len(self) > self.capacity:
+            self.pop(self.lru.pop(0))
+
+    def __delitem__(self, key):
+        super(LRUCache, self).__delitem__(key)
+        self.lru.remove(key)
+
+    def clear(self):
+        super(LRUCache, self).clear()
+        del self.lru[:]
 
 
 def with_metaclass(meta, *bases):
