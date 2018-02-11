@@ -33,7 +33,7 @@ class Storage(with_metaclass(ABCMeta, object)):
     def close(self):
         raise NotImplementedError("Please override this method.")
 
-    # lock() & unlock ensure the data safety under multi-readers/writers scenarios.
+    # lock() & unlock ensure the values safety under multi-readers/writers scenarios.
     def lock(self):
         pass
 
@@ -42,9 +42,9 @@ class Storage(with_metaclass(ABCMeta, object)):
 
 
 class FileStorage(Storage):
-    '''
-    Store data into disk (.db file).
-    '''
+    """
+    Store key-value pairs on disk (.db file).
+    """
     ROOT_BLOCK_SIZE = 4096
     # byte-order:network (= big-endian) type:unsigned long long
     INTEGER_FORMAT = "!Q"
@@ -118,7 +118,7 @@ class FileStorage(Storage):
                 self._deprecate_old(address)
                 self._seek_end()
                 obj_address = self._file.tell()
-        # 1.write the length of data  2.write the real data
+        # 1.write the length of values  2.write the real values
         self._write_integer(len(data))
         self._file.write(data)
         self.unlock()
@@ -154,9 +154,9 @@ class FileStorage(Storage):
 
 class MemoryStorage(Storage):
     """
-    Store data just in memory.
+    Store key-value pairs just in memory.
     """
-    __slots__ = ['memory', 'lock']
+    __slots__ = ('memory', 'lock')
 
     def __init__(self, *, multi_process=False):
         super(MemoryStorage, self).__init__()
