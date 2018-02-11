@@ -5,7 +5,7 @@ from typing import Union, Type
 from cannondb.const import INT_FORMAT, FLOAT_FORMAT
 
 
-class SerializerError(Exception):
+class NoSerializerError(Exception):
     pass
 
 
@@ -49,8 +49,8 @@ class FloatSerializer(Serializer):
 class StrSerializer(Serializer):
     __slots__ = []
 
-    def serialize(self, obj: str) -> bytes:
-        return obj.encode(encoding='utf-8')
+    def serialize(self, s: str) -> bytes:
+        return s.encode(encoding='utf-8')
 
     def deserialize(self, data: bytes) -> str:
         return data.decode(encoding='utf-8')
@@ -64,9 +64,9 @@ type_map = {
 }
 
 
-def serializer_type_switch(t: Type[Union[int, float, str]]):
+def serializer_type_switcher(t: Type[Union[int, float, str]]):
     """return corresponding serializer to arg type"""
     try:
         return type_map[t]
     except TypeError:
-        raise SerializerError('No corresponding serializer')
+        raise NoSerializerError('No corresponding serializer')

@@ -1,6 +1,48 @@
 """
   This include some helper-functions or classes.
 """
+import os
+
+
+class EndOfFileError(Exception):
+    pass
+
+
+def open_database_file(file_name, suffix='.cdb', mode='rb+'):
+    try:
+        f = open(file_name + suffix, mode, buffering=0)
+    except IOError:
+        fd = os.open(file_name + suffix, os.O_RDWR | os.O_CREAT)
+        f = os.fdopen(fd, mode)
+    return f
+
+
+def file_flush_and_sync(f: os.io.FileIO):
+    f.flush()
+    os.fsync(f.fileno())
+
+
+def read_from_file(file_fd: os.io.FileIO, start: int, stop: int) -> bytes:
+    length = stop - start
+    assert length >= 0
+    file_fd.seek(start)
+    data = bytes()
+    while file_fd.tell() < stop:
+        read_data = file_fd.read(stop - file_fd.tell())
+        if read_data == b'':
+            raise EndOfFileError('Read until the end of file_fd')
+        data += read_data
+    assert len(data) == length
+    return data
+
+
+def write_to_file(file_fd: os.io.FileIO, data: bytes, f_sync: bool = True):
+    length_to_write = len(data)
+    written = 0
+    while written < length_to_write:
+        written = file_fd.write(data[written:])
+    if f_sync:
+        file_flush_and_sync(file_fd)
 
 
 def generate_address(data):
@@ -87,7 +129,7 @@ def with_metaclass(meta, *bases):
     dummy classes into the final MRO.
     """
 
-    class metaclass(meta):
+    class MetaClass(meta):
         __call__ = type.__call__
         __init__ = type.__init__
 
@@ -96,4 +138,4 @@ def with_metaclass(meta, *bases):
                 return type.__new__(cls, name, (), d)
             return meta(name, bases, d)
 
-    return metaclass('temporary_class', None, {})
+    return MetaClass('temporary_class', None, {})
