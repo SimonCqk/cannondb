@@ -96,13 +96,24 @@ class BaseBNode(metaclass=ABCMeta):
         """convert node to bytes which contains all information of this node"""
         pass
 
+    @classmethod
+    def from_raw_data(cls, tree_conf: TreeConf, page: int, data: bytes):
+        node_type = int.from_bytes(data[0:NODE_TYPE_LENGTH_LIMIT], ENDIAN)
+        if node_type == 0:
+            return BNode(tree_conf, page=page, data=data)
+        elif node_type == 1:
+            return OverflowNode(tree_conf, page=page, data=data)
+        else:
+            raise TypeError('No such node type:{type} matched'.format(type=node_type))
+
 
 class OverflowNode(BaseBNode):
     """Recording overflow pages' information and raw data"""
     __slots__ = ('tree_conf', 'page', 'parent_page', 'next_page', 'data')
     NODE_TYPE = _NodeType.OVERFLOW_NODE
 
-    def __init__(self, tree_conf: TreeConf, page: int, parent_page: int, next_page: int = None, data: bytes = None):
+    def __init__(self, tree_conf: TreeConf, page: int, parent_page: int = None, next_page: int = None,
+                 data: bytes = None):
         self.tree_conf = tree_conf
         self.page = page
         self.parent_page = parent_page
@@ -125,7 +136,7 @@ class OverflowNode(BaseBNode):
         if len(self.data) + header_len > self.tree_conf.page_size:
             detach_start = self.tree_conf.page_size - header_len
             self.next_page = self.tree_conf.tree.next_available_page()
-            of = OverflowNode(self.next_page, self.page, data=self.data[detach_start:])
+            of = OverflowNode(self.tree_conf, self.next_page, self.page, data=self.data[detach_start:])
             of.flush()
             self.data = self.data[0:detach_start]
         header = (
@@ -143,17 +154,18 @@ class OverflowNode(BaseBNode):
 
 
 class BNode(BaseBNode):
-    __slots__ = ('contents', 'children', 'tree_conf', 'page', 'next_page')
+    __slots__ = ('contents', 'children', 'tree_conf', 'page', 'next_page', 'data')
     NODE_TYPE = _NodeType.NORMAL_NODE
 
     def __init__(self, tree_conf: TreeConf, contents: list = None, children: list = None, page: int = None,
-                 next_page: int = None):
+                 next_page: int = None, data: bytes = None):
         self.tree_conf = tree_conf
         self.contents = contents or []
         self.children = children or []
         self.page = page
         self.next_page = next_page
-
+        if data:
+            self.load(data)
         if self.children:
             assert len(self.contents) + 1 == len(self.children), \
                 'One more child than data item required'
@@ -196,7 +208,7 @@ class BNode(BaseBNode):
         if len(data) + header_len > self.tree_conf.page_size:  # overflow
             detach_start = self.tree_conf.page_size - header_len
             self.next_page = self.tree_conf.tree.next_available_page()
-            of = OverflowNode(self.next_page, self.page, data=bytes(data[detach_start:]))
+            of = OverflowNode(self.tree_conf, self.next_page, self.page, data=bytes(data[detach_start:]))
             of.flush()
             data = data[0:detach_start]
         next_page = 0 if self.next_page is None else self.next_page
