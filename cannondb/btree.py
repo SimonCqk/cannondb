@@ -1,24 +1,87 @@
 import bisect
+import io
 import math
 from typing import Iterable
 
-from cannondb.node import BNode
+import portalocker
+
+from cannondb.constants import TreeConf
+from cannondb.node import BNode, BaseBNode
+from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file
+
+
+class PageOutOfRange(Exception):
+    pass
 
 
 class FileHandler(object):
     """Handling-layer between B tree engine and underlying db file"""
-    pass
+    __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_lock', 'last_page')
+
+    def __init__(self, file_name, tree_conf: TreeConf, cache_size=512):
+        self._filename = file_name
+        self._tree_conf = tree_conf
+
+        if cache_size == 0:
+            self._cache = FakeCache()
+        else:
+            self._cache = LRUCache(capacity=cache_size)
+        self._fd = open_database_file(self._filename)
+        self._lock = portalocker.lock(self._fd, portalocker.LOCK_EX)
+
+        # Get the next available page
+        self._fd.seek(0, io.SEEK_END)
+        last_byte = self._fd.tell()
+        self.last_page = int(last_byte / self._tree_conf.page_size)
+
+    def _fd_seek_end(self):
+        self._fd.seek(0, io.SEEK_END)
+
+    def _get_page_data(self, page: int) -> bytes:
+        page_start = page * self._tree_conf.page_size
+
+        data = read_from_file(self._fd, page_start,
+                              page_start + self._tree_conf.page_size)
+        if data == b'':
+            raise PageOutOfRange('Page index out of range')
+        else:
+            return data
+
+    def _set_page_data(self, page: int, page_data: bytes):
+        assert len(page_data) == self._tree_conf.page_size
+        self._fd.seek(page * self._tree_conf.page_size)
+        write_to_file(self._fd, page_data)
+
+    @property
+    def next_available_page(self) -> int:
+        self.last_page += 1
+        return self.last_page
+
+    def set_node(self, node: BNode):
+        self._set_page_data(node.page, node.dump())
+        self._cache[node.page] = node
+
+    def get_node(self, page: int):
+        node = self._cache.get(page)
+        if node:
+            return node
+        data = self._get_page_data(page)
+        node = BaseBNode.from_raw_data(self._tree_conf, page, data)
+        self._cache[node.page] = node
+        return node
+
+    def _ensure_root_block(self):
+        pass
 
 
 class BTree(object):
-    __slots__ = ('_order', '_count', '_root', '_bottom', 'last_page')
+    __slots__ = ('_order', '_count', '_root', '_bottom')
     BRANCH = LEAF = BNode
 
     def __init__(self, order=100):
         self._order = order
         self._root = self._bottom = self.LEAF(self)
         self._count = 0
-        self.last_page = 0
 
     def _path_to(self, key):
         """
@@ -176,8 +239,7 @@ class BTree(object):
 
     @property
     def next_available_page(self) -> int:
-        self.last_page += 1
-        return self.last_page
+        pass
 
     @property
     def order(self):

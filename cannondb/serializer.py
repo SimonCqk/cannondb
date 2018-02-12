@@ -3,7 +3,7 @@ import struct
 from abc import ABCMeta, abstractmethod
 from typing import Union, Type
 
-from cannondb.const import INT_FORMAT, FLOAT_FORMAT
+from cannondb.constants import INT_FORMAT, FLOAT_FORMAT
 
 
 class NoSerializerError(Exception):

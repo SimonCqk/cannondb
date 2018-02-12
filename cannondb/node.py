@@ -2,9 +2,10 @@ import enum
 import struct
 from abc import ABCMeta, abstractmethod
 
-from cannondb.const import (ENDIAN, NODE_CONTENTS_SIZE_LIMIT, PAGE_ADDRESS_LIMIT, PAGE_LENGTH_LIMIT, KEY_LENGTH_LIMIT,
-                            KEY_LENGTH_FORMAT,
-                            VALUE_LENGTH_FORMAT, VALUE_LENGTH_LIMIT, NODE_TYPE_LENGTH_LIMIT, TreeConf)
+from cannondb.constants import (ENDIAN, NODE_CONTENTS_SIZE_LIMIT, PAGE_ADDRESS_LIMIT, PAGE_LENGTH_LIMIT,
+                                KEY_LENGTH_LIMIT,
+                                KEY_LENGTH_FORMAT,
+                                VALUE_LENGTH_FORMAT, VALUE_LENGTH_LIMIT, NODE_TYPE_LENGTH_LIMIT, TreeConf)
 
 
 class KeyValPair(metaclass=ABCMeta):
@@ -135,7 +136,7 @@ class OverflowNode(BaseBNode):
         header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
         if len(self.data) + header_len > self.tree_conf.page_size:
             detach_start = self.tree_conf.page_size - header_len
-            self.next_page = self.tree_conf.tree.next_available_page()
+            self.next_page = self.tree_conf.tree.next_available_page
             of = OverflowNode(self.tree_conf, self.next_page, self.page, data=self.data[detach_start:])
             of.flush()
             self.data = self.data[0:detach_start]
@@ -207,7 +208,7 @@ class BNode(BaseBNode):
         header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_SIZE_LIMIT + PAGE_ADDRESS_LIMIT
         if len(data) + header_len > self.tree_conf.page_size:  # overflow
             detach_start = self.tree_conf.page_size - header_len
-            self.next_page = self.tree_conf.tree.next_available_page()
+            self.next_page = self.tree_conf.tree.next_available_page
             of = OverflowNode(self.tree_conf, self.next_page, self.page, data=bytes(data[detach_start:]))
             of.flush()
             data = data[0:detach_start]
