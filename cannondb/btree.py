@@ -5,6 +5,11 @@ from typing import Iterable
 from cannondb.node import BNode
 
 
+class FileHandler(object):
+    """Handling-layer between B tree engine and underlying db file"""
+    pass
+
+
 class BTree(object):
     __slots__ = ('_order', '_count', '_root', '_bottom', 'last_page')
     BRANCH = LEAF = BNode

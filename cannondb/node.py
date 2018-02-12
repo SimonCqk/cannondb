@@ -1,9 +1,10 @@
-import struct
 import enum
+import struct
 from abc import ABCMeta, abstractmethod
-from cannondb.const import (ENDIAN, NODE_CONTENTS_SIZE_LIMIT, PAGE_ADDRESS_LIMIT, KEY_LENGTH_LIMIT, KEY_LENGTH_FORMAT,
+
+from cannondb.const import (ENDIAN, NODE_CONTENTS_SIZE_LIMIT, PAGE_ADDRESS_LIMIT, PAGE_LENGTH_LIMIT, KEY_LENGTH_LIMIT,
+                            KEY_LENGTH_FORMAT,
                             VALUE_LENGTH_FORMAT, VALUE_LENGTH_LIMIT, NODE_TYPE_LENGTH_LIMIT, TreeConf)
-from cannondb.utils import write_to_file, read_from_file, file_flush_and_sync
 
 
 class KeyValPair(metaclass=ABCMeta):
@@ -87,19 +88,21 @@ class BaseBNode(metaclass=ABCMeta):
 
     @abstractmethod
     def load(self, data: bytes):
+        """create node from raw data"""
         pass
 
     @abstractmethod
     def dump(self) -> bytes:
+        """convert node to bytes which contains all information of this node"""
         pass
 
 
 class OverflowNode(BaseBNode):
     """Recording overflow pages' information and raw data"""
     __slots__ = ('tree_conf', 'page', 'parent_page', 'next_page', 'data')
-    NODE_TYPE = _NodeType.OVERFLOW_NODE.value
+    NODE_TYPE = _NodeType.OVERFLOW_NODE
 
-    def __init__(self, tree_conf: TreeConf, page, parent_page: int = None, next_page: int = None, data: bytes = None):
+    def __init__(self, tree_conf: TreeConf, page: int, parent_page: int, next_page: int = None, data: bytes = None):
         self.tree_conf = tree_conf
         self.page = page
         self.parent_page = parent_page
@@ -109,18 +112,39 @@ class OverflowNode(BaseBNode):
             self.load(data)
 
     def load(self, data: bytes):
-        pass
+        data_len_end = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT
+        data_len = int.from_bytes(data[NODE_TYPE_LENGTH_LIMIT:data_len_end], ENDIAN)
+        header_end = data_len_end + PAGE_ADDRESS_LIMIT
+        self.next_page = int.from_bytes(data[data_len_end:header_end], ENDIAN)
+        if self.next_page == 0:
+            self.next_page = None
+        self.data = data[header_end:data_len]
 
-    def dump(self):
-        pass
+    def dump(self) -> bytes:
+        header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        if len(self.data) + header_len > self.tree_conf.page_size:
+            detach_start = self.tree_conf.page_size - header_len
+            self.next_page = self.tree_conf.tree.next_available_page()
+            of = OverflowNode(self.next_page, self.page, data=self.data[detach_start:])
+            of.flush()
+            self.data = self.data[0:detach_start]
+        header = (
+                self.NODE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
+                len(self.data).to_bytes(PAGE_LENGTH_LIMIT, ENDIAN) +
+                self.next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
+        )
+        padding = self.tree_conf.page_size - header_len - len(self.data)
+        assert 0 <= padding
+        return header + self.data + bytes(padding)
 
     def flush(self):
-        pass
+        if self.data:
+            pass
 
 
 class BNode(BaseBNode):
     __slots__ = ('contents', 'children', 'tree_conf', 'page', 'next_page')
-    NODE_TYPE = _NodeType.NORMAL_NODE.value
+    NODE_TYPE = _NodeType.NORMAL_NODE
 
     def __init__(self, tree_conf: TreeConf, contents: list = None, children: list = None, page: int = None,
                  next_page: int = None):
@@ -128,7 +152,7 @@ class BNode(BaseBNode):
         self.contents = contents or []
         self.children = children or []
         self.page = page
-        self.next_page = next_page or 0
+        self.next_page = next_page
 
         if self.children:
             assert len(self.contents) + 1 == len(self.children), \
@@ -140,7 +164,24 @@ class BNode(BaseBNode):
             name=name, pairs=','.join([str(it) for it in self.contents]))
 
     def load(self, data: bytes):
-        pass
+        assert len(data) == self.tree_conf.page_size
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_SIZE_LIMIT
+        pairs_len = int.from_bytes(data[NODE_TYPE_LENGTH_LIMIT:pairs_len_end], ENDIAN)
+        children_len_end = pairs_len_end + NODE_CONTENTS_SIZE_LIMIT
+        children_len = int.from_bytes(data[pairs_len_end:children_len_end], ENDIAN)
+        header_end = children_len_end + PAGE_ADDRESS_LIMIT
+        self.next_page = int.from_bytes(data[children_len_end:header_end], ENDIAN)
+        if self.next_page == 0:
+            self.next_page = None
+        each_pair_len = KeyValPair(self.tree_conf).length
+        pairs_end = header_end + pairs_len
+        for off_set in range(header_end, pairs_end, each_pair_len):
+            pair = KeyValPair(self.tree_conf, data=data[off_set:(off_set + each_pair_len)])
+            self.contents.append(pair)
+        children_end = pairs_end + children_len
+        assert children_end <= len(data)
+        for off_set in range(pairs_end, children_end, PAGE_ADDRESS_LIMIT):
+            self.children.append(int.from_bytes(data[off_set:(off_set + PAGE_ADDRESS_LIMIT)], ENDIAN))
 
     def dump(self) -> bytes:
         data = bytearray()
@@ -158,12 +199,12 @@ class BNode(BaseBNode):
             of = OverflowNode(self.next_page, self.page, data=bytes(data[detach_start:]))
             of.flush()
             data = data[0:detach_start]
-
+        next_page = 0 if self.next_page is None else self.next_page
         header = (
-                self.NODE_TYPE.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
+                self.NODE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
                 pairs_len.to_bytes(NODE_CONTENTS_SIZE_LIMIT, ENDIAN) +
                 children_len.to_bytes(NODE_CONTENTS_SIZE_LIMIT, ENDIAN) +
-                self.next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
+                next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
         )
         data = bytearray(header) + data
         if len(data) < self.tree_conf.page_size:

@@ -1,3 +1,4 @@
+import json
 import struct
 from abc import ABCMeta, abstractmethod
 from typing import Union, Type
@@ -49,22 +50,33 @@ class FloatSerializer(Serializer):
 class StrSerializer(Serializer):
     __slots__ = []
 
-    def serialize(self, s: str) -> bytes:
-        return s.encode(encoding='utf-8')
+    def serialize(self, obj: str) -> bytes:
+        return obj.encode(encoding='utf-8')
 
     def deserialize(self, data: bytes) -> str:
         return data.decode(encoding='utf-8')
+
+
+class DictSerializer(Serializer):
+    __slots__ = []
+
+    def serialize(self, obj: object) -> bytes:
+        return json.dumps(obj, ensure_ascii=False).encode(encoding='utf-8')
+
+    def deserialize(self, data: bytes) -> dict:
+        return json.loads(data.decode(encoding='utf-8'))
 
 
 # make it a global var
 type_map = {
     int: IntSerializer,
     float: FloatSerializer,
-    str: StrSerializer
+    str: StrSerializer,
+    dict: DictSerializer
 }
 
 
-def serializer_type_switcher(t: Type[Union[int, float, str]]):
+def serializer_type_switcher(t: Type[Union[int, float, str, dict]]):
     """return corresponding serializer to arg type"""
     try:
         return type_map[t]
