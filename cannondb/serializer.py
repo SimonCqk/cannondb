@@ -68,17 +68,36 @@ class DictSerializer(Serializer):
 
 
 # make it a global var
-type_map = {
+serializer_map = {
     int: IntSerializer,
     float: FloatSerializer,
     str: StrSerializer,
     dict: DictSerializer
 }
 
+type_num_map = {
+    0: int,
+    1: float,
+    2: str,
+    3: dict,
+    int: 0,
+    float: 1,
+    str: 2,
+    dict: 3
+}
 
-def serializer_type_switcher(t: Type[Union[int, float, str, dict]]):
+
+def serializer_switcher(t: Type[Union[int, float, str, dict]]):
     """return corresponding serializer to arg type"""
     try:
-        return type_map[t]
-    except TypeError:
+        return serializer_map[t]
+    except KeyError:
         raise NoSerializerError('No corresponding serializer')
+
+
+def type_switcher(num: Union[Type, int]) -> Union[Type[Union[int, float, str, dict], int]]:
+    """return type(type-num) by type-num(type)"""
+    try:
+        return type_num_map[num]
+    except KeyError:
+        raise ValueError('No corresponding type to number {}'.format(num))

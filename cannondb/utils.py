@@ -1,6 +1,7 @@
 """
   This include some helper-functions or classes.
 """
+import io
 import os
 
 
@@ -17,12 +18,12 @@ def open_database_file(file_name, suffix='.cdb', mode='rb+'):
     return f
 
 
-def file_flush_and_sync(f: os.io.FileIO):
+def file_flush_and_sync(f: io.FileIO):
     f.flush()
     os.fsync(f.fileno())
 
 
-def read_from_file(file_fd: os.io.FileIO, start: int, stop: int) -> bytes:
+def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     length = stop - start
     assert length >= 0
     file_fd.seek(start)
@@ -36,7 +37,7 @@ def read_from_file(file_fd: os.io.FileIO, start: int, stop: int) -> bytes:
     return data
 
 
-def write_to_file(file_fd: os.io.FileIO, data: bytes, f_sync: bool = True):
+def write_to_file(file_fd: io.FileIO, data: bytes, f_sync: bool = True):
     length_to_write = len(data)
     written = 0
     while written < length_to_write:

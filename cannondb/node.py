@@ -2,14 +2,12 @@ import enum
 import struct
 from abc import ABCMeta, abstractmethod
 
-from cannondb.constants import (ENDIAN, NODE_CONTENTS_SIZE_LIMIT, PAGE_ADDRESS_LIMIT, PAGE_LENGTH_LIMIT,
-                                KEY_LENGTH_LIMIT,
-                                KEY_LENGTH_FORMAT,
-                                VALUE_LENGTH_FORMAT, VALUE_LENGTH_LIMIT, NODE_TYPE_LENGTH_LIMIT, TreeConf)
+from cannondb.constants import *
+from cannondb.serializer import serializer_switcher, type_switcher
 
 
 class KeyValPair(metaclass=ABCMeta):
-    __slots__ = ('key', 'value', 'length', 'tree_conf')
+    __slots__ = ('key', 'value', 'length', 'tree_conf', 'key_ser', 'val_ser')
 
     def __init__(self, tree_conf: TreeConf, key=None, value=None, data: bytes = None):
         self.tree_conf = tree_conf
@@ -19,41 +17,55 @@ class KeyValPair(metaclass=ABCMeta):
         if value:
             assert len(value) <= self.tree_conf.value_size
         self.value = value
-        self.length = (KEY_LENGTH_LIMIT + self.tree_conf.key_size
-                       + VALUE_LENGTH_LIMIT + self.tree_conf.value_size)
+        self.length = (KEY_LENGTH_LIMIT + self.tree_conf.key_size +
+                       VALUE_LENGTH_LIMIT + self.tree_conf.value_size +
+                       2 * SERIALIZER_TYPE_LENGTH_LIMIT)
+        self.key_ser = serializer_switcher(type(key))
+        self.val_ser = serializer_switcher(type(value))
         if data:
             self.load(data)
 
     def load(self, data: bytes):
         assert len(data) == self.length
-        key_len = struct.unpack(KEY_LENGTH_FORMAT, data[0:KEY_LENGTH_LIMIT])[0]
+        key_len_end = KEY_LENGTH_LIMIT
+        key_len = struct.unpack(KEY_LENGTH_FORMAT, data[0:key_len_end])[0]
 
         assert 0 <= key_len <= self.tree_conf.key_size
 
         key_end = KEY_LENGTH_LIMIT + key_len
-        self.key = data[key_len:key_end].decode('utf-8')
+        key_type_start = key_len_end + self.tree_conf.key_size
+        key_type_end = key_type_start + SERIALIZER_TYPE_LENGTH_LIMIT
+        self.key_ser = serializer_switcher(type_switcher(int.from_bytes(data[key_type_start:key_type_end], ENDIAN)))
+        self.key = self.key_ser.deserialize(data[key_len_end:key_end])
 
-        val_len_start = key_end + self.tree_conf.key_size
-        val_len_end = val_len_start + VALUE_LENGTH_LIMIT
-        val_len = struct.unpack(VALUE_LENGTH_FORMAT, data[val_len_start:val_len_end])[0]
+        val_len_end = key_type_end + VALUE_LENGTH_LIMIT
+        val_len = struct.unpack(VALUE_LENGTH_FORMAT, data[key_type_end:val_len_end])[0]
 
         assert 0 <= val_len <= self.tree_conf.value_size
+
         val_end = val_len_end + val_len
-        self.value = self.tree_conf.serializer.deserialize(data[val_len_end:val_end])
+        val_type_start = val_len_end + self.tree_conf.value_size
+        val_type_end = val_type_start + SERIALIZER_TYPE_LENGTH_LIMIT
+        self.val_ser = serializer_switcher(type_switcher(int.from_bytes(data[val_type_start:val_type_end], ENDIAN)))
+        self.value = self.val_ser.deserialize(data[val_len_end:val_end])
 
     def dump(self) -> bytes:
         assert self.key and self.value
-        key_as_bytes = self.tree_conf.serializer.serialize(self.key)
+        key_as_bytes = self.key_ser.serialize(self.key)
         key_len = len(key_as_bytes)
-        val_as_bytes = self.tree_conf.serializer.serialize(self.value)
+        key_type_as_bytes = type_switcher(type(self.key)).to_bytes(SERIALIZER_TYPE_LENGTH_LIMIT, ENDIAN)
+        val_as_bytes = self.val_ser.serialize(self.value)
         val_len = len(val_as_bytes)
+        val_type_as_bytes = type_switcher(type(self.value)).to_bytes(SERIALIZER_TYPE_LENGTH_LIMIT, ENDIAN)
         data = (
                 struct.pack(KEY_LENGTH_FORMAT, key_len) +
                 key_as_bytes +
                 bytes(self.tree_conf.key_size - key_len) +
+                key_type_as_bytes +
                 struct.pack(VALUE_LENGTH_FORMAT, val_len) +
                 val_as_bytes +
-                bytes(self.tree_conf.value_size - val_len)
+                bytes(self.tree_conf.value_size - val_len) +
+                val_type_as_bytes
         )
         return data
 
@@ -140,10 +152,11 @@ class OverflowNode(BaseBNode):
             of = OverflowNode(self.tree_conf, self.next_page, self.page, data=self.data[detach_start:])
             of.flush()
             self.data = self.data[0:detach_start]
+        next_page = 0 if self.next_page is None else self.next_page
         header = (
                 self.NODE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
                 len(self.data).to_bytes(PAGE_LENGTH_LIMIT, ENDIAN) +
-                self.next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
+                next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
         )
         padding = self.tree_conf.page_size - header_len - len(self.data)
         assert 0 <= padding
@@ -252,7 +265,7 @@ class BNode(BaseBNode):
             # try to lend to the left neighboring sibling
             if parent_index:
                 left_sib = parent.children[parent_index - 1]
-                if len(left_sib.contents) < self.tree_conf.tree.order:
+                if len(left_sib.contents) < self.tree_conf.order:
                     self.lateral(
                         parent, parent_index, left_sib, parent_index - 1)
                     return
@@ -260,7 +273,7 @@ class BNode(BaseBNode):
             # try the right neighbor
             if parent_index + 1 < len(parent.children):
                 right_sib = parent.children[parent_index + 1]
-                if len(right_sib.contents) < self.tree_conf.tree.order:
+                if len(right_sib.contents) < self.tree_conf.order:
                     self.lateral(
                         parent, parent_index, right_sib, parent_index + 1)
                     return
@@ -341,7 +354,7 @@ class BNode(BaseBNode):
 
     def insert(self, index, key, value, ancestors):
         self.contents.insert(index, KeyValPair(self.tree_conf, key, value))
-        if len(self.contents) > self.tree_conf.tree.order:
+        if len(self.contents) > self.tree_conf.order:
             self.shrink(ancestors)
 
     def remove(self, index, ancestors):
