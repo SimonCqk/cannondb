@@ -90,14 +90,15 @@ class KeyValPair(metaclass=ABCMeta):
     __repr__ = __str__
 
 
-class _NodeType(enum.Enum):
-    NORMAL_NODE = 0
-    OVERFLOW_NODE = 1
+class _PageType(enum.Enum):
+    NORMAL_PAGE = 0
+    OVERFLOW_PAGE = 1
+    DEPRECATED_PAGE = 2
 
 
 class BaseBNode(metaclass=ABCMeta):
     __slots__ = ()
-    NODE_TYPE = None
+    PAGE_TYPE = None
 
     @abstractmethod
     def load(self, data: bytes):
@@ -123,7 +124,7 @@ class BaseBNode(metaclass=ABCMeta):
 class OverflowNode(BaseBNode):
     """Recording overflow pages' information and raw data"""
     __slots__ = ('tree_conf', 'page', 'parent_page', 'next_page', 'data')
-    NODE_TYPE = _NodeType.OVERFLOW_NODE
+    PAGE_TYPE = _PageType.OVERFLOW_PAGE
 
     def __init__(self, tree_conf: TreeConf, page: int, parent_page: int = None, next_page: int = None,
                  data: bytes = None):
@@ -169,14 +170,14 @@ class OverflowNode(BaseBNode):
 
 class BNode(BaseBNode):
     __slots__ = ('contents', 'children', 'tree_conf', 'page', 'next_page', 'data')
-    NODE_TYPE = _NodeType.NORMAL_NODE
+    PAGE_TYPE = _PageType.NORMAL_PAGE
 
     def __init__(self, tree_conf: TreeConf, contents: list = None, children: list = None, page: int = None,
                  next_page: int = None, data: bytes = None):
         self.tree_conf = tree_conf
         self.contents = contents or []
         self.children = children or []
-        self.page = page
+        self.page = page or self.tree_conf.tree.next_available_page
         self.next_page = next_page
         if data:
             self.load(data)

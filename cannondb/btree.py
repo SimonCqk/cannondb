@@ -3,9 +3,9 @@ import io
 import math
 from typing import Iterable
 
-import portalocker
+import rwlock
 
-from cannondb.constants import TreeConf
+from cannondb.constants import *
 from cannondb.node import BNode, BaseBNode
 from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file
 
@@ -16,7 +16,8 @@ class PageOutOfRange(Exception):
 
 class FileHandler(object):
     """Handling-layer between B tree engine and underlying db file"""
-    __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_lock', 'last_page')
+    __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_lock', 'last_page',
+                 '_committed_pages', '_uncommitted_pages')
 
     def __init__(self, file_name, tree_conf: TreeConf, cache_size=512):
         self._filename = file_name
@@ -27,12 +28,40 @@ class FileHandler(object):
         else:
             self._cache = LRUCache(capacity=cache_size)
         self._fd = open_database_file(self._filename)
-        self._lock = portalocker.lock(self._fd, portalocker.LOCK_EX)
+        self._lock = rwlock.RWLock()
 
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
         last_byte = self._fd.tell()
         self.last_page = int(last_byte / self._tree_conf.page_size)
+        self._committed_pages = dict()
+        self._uncommitted_pages = dict()
+
+    @property
+    def write_lock(self):
+        class WriteLock:
+            def __enter__(_self):
+                self._lock.writer_lock.acquire()
+
+            def __exit__(_self, exc_type, exc_val, exc_tb):
+                if exc_type:
+                    self._cache.clear()
+                else:
+                    pass
+                self._lock.writer_lock.release()
+
+        return WriteLock()
+
+    @property
+    def read_lock(self):
+        class ReadLock:
+            def __enter__(_self):
+                self._lock.reader_lock.acquire()
+
+            def __exit__(_self, exc_type, exc_val, exc_tb):
+                self._lock.reader_lock.release()
+
+        return ReadLock()
 
     def _fd_seek_end(self):
         self._fd.seek(0, io.SEEK_END)
@@ -43,14 +72,48 @@ class FileHandler(object):
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
         if data == b'':
-            raise PageOutOfRange('Page index out of range')
+            raise PageOutOfRange('Page index out of range or page data noe set yet')
         else:
             return data
 
     def _set_page_data(self, page: int, page_data: bytes):
         assert len(page_data) == self._tree_conf.page_size
-        self._fd.seek(page * self._tree_conf.page_size)
+        page_start = page * self._tree_conf.page_size
+        self._uncommitted_pages[page] = page_start
+        self._fd.seek(page_start)
         write_to_file(self._fd, page_data)
+
+    def set_meta_tree_conf(self, root_page: int, tree_conf: TreeConf):
+        self._tree_conf = tree_conf
+        length = PAGE_ADDRESS_LIMIT + 1 + PAGE_LENGTH_LIMIT + KEY_LENGTH_LIMIT + VALUE_LENGTH_LIMIT
+        data = (
+                root_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN) +
+                self._tree_conf.order.to_bytes(1, ENDIAN) +
+                self._tree_conf.page_size.to_bytes(PAGE_LENGTH_LIMIT, ENDIAN) +
+                self._tree_conf.key_size.to_bytes(KEY_LENGTH_LIMIT, ENDIAN) +
+                self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT) +
+                bytes(self._tree_conf.page_size - length)  # padding
+        )
+        self._set_page_data(0, data)
+
+    def get_meta_tree_conf(self) -> tuple:
+        try:
+            data = self._get_page_data(0)
+        except PageOutOfRange:
+            raise ValueError('Meta tree configure data has not set yet')
+        root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
+        order_end = PAGE_ADDRESS_LIMIT + 1
+        order = int.from_bytes(data[PAGE_ADDRESS_LIMIT:order_end], ENDIAN)
+        page_size_end = order_end + PAGE_LENGTH_LIMIT
+        page_size = int.from_bytes(data[order_end:page_size_end], ENDIAN)
+        key_size_end = page_size_end + KEY_LENGTH_LIMIT
+        key_size = int.from_bytes(data[page_size_end:key_size_end], ENDIAN)
+        value_size_end = key_size_end + VALUE_LENGTH_LIMIT
+        value_size = int.from_bytes(data[key_size_end:value_size_end], ENDIAN)
+        if order != self._tree_conf.tree.order:
+            order = self._tree_conf.tree.order
+        self._tree_conf = TreeConf(self._tree_conf.tree, order, page_size, key_size, value_size)
+        return root_page, self._tree_conf
 
     @property
     def next_available_page(self) -> int:
@@ -70,17 +133,36 @@ class FileHandler(object):
         self._cache[node.page] = node
         return node
 
-    def _ensure_root_block(self):
-        pass
+    def commit(self):
+        if self._uncommitted_pages:
+            self._committed_pages.update(self._uncommitted_pages)
+            self._uncommitted_pages.clear()
+
+    def rollback(self):
+        if self._uncommitted_pages:
+            self._uncommitted_pages.clear()
 
 
 class BTree(object):
-    __slots__ = ('_order', '_count', '_root', '_bottom')
+    __slots__ = ('_file_name', '_order', '_count', '_root', '_bottom', '_tree_conf', '_handler')
     BRANCH = LEAF = BNode
 
-    def __init__(self, order=100):
+    def __init__(self, file_name: str, order=100, page_size: int = 8192, key_size: int = 16,
+                 value_size: int = 32, cache_size=128):
+        self._file_name = file_name
+        self._tree_conf = TreeConf(tree=self, order=order, page_size=page_size,
+                                   key_size=key_size, value_size=value_size)
+        self._handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
         self._order = order
-        self._root = self._bottom = self.LEAF(self)
+        try:
+            meta_root_page, meta_tree_conf = self._handler.get_meta_tree_conf()
+        except ValueError:
+            #  init empty tree
+            self._root = self._bottom = self.LEAF(self._tree_conf)
+            # TODO: set root node (concurrent safety)
+        else:
+            self._root, self._tree_conf = self._handler.get_node(meta_root_page), meta_tree_conf
+
         self._count = 0
 
     def _path_to(self, key):
@@ -239,7 +321,7 @@ class BTree(object):
 
     @property
     def next_available_page(self) -> int:
-        pass
+        return self._handler.next_available_page
 
     @property
     def order(self):
