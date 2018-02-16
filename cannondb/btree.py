@@ -77,7 +77,7 @@ class FileHandler(object):
             return data
 
     def _set_page_data(self, page: int, page_data: bytes):
-        assert len(page_data) == self._tree_conf.page_size
+        assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
         self._fd.seek(page_start)
@@ -112,7 +112,7 @@ class FileHandler(object):
         value_size = int.from_bytes(data[key_size_end:value_size_end], ENDIAN)
         if order != self._tree_conf.tree.order:
             order = self._tree_conf.tree.order
-        self._tree_conf = TreeConf(self._tree_conf.tree, order, page_size, key_size, value_size)
+        self._tree_conf = TreeConf(order, page_size, key_size, value_size)
         return root_page, self._tree_conf
 
     @property
@@ -124,12 +124,12 @@ class FileHandler(object):
         self._set_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
-    def get_node(self, page: int):
+    def get_node(self, page: int, tree=None):
         node = self._cache.get(page)
         if node:
             return node
         data = self._get_page_data(page)
-        node = BaseBNode.from_raw_data(self._tree_conf, page, data)
+        node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)
         self._cache[node.page] = node
         return node
 
@@ -142,9 +142,15 @@ class FileHandler(object):
         if self._uncommitted_pages:
             self._uncommitted_pages.clear()
 
+    def flush(self):
+        with self.write_lock:
+            for node in self._cache.values():
+                self._set_page_data(node.page, node.dump())
+        self.commit()
+
 
 class BTree(object):
-    __slots__ = ('_file_name', '_order', '_count', '_root', '_bottom', '_tree_conf', '_handler')
+    __slots__ = ('_file_name', '_order', '_count', '_root', '_bottom', '_tree_conf', 'handler')
     BRANCH = LEAF = BNode
 
     def __init__(self, file_name: str, order=100, page_size: int = 8192, key_size: int = 16,
@@ -152,16 +158,19 @@ class BTree(object):
         self._file_name = file_name
         self._tree_conf = TreeConf(tree=self, order=order, page_size=page_size,
                                    key_size=key_size, value_size=value_size)
-        self._handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
+        self.handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
         self._order = order
+        # create new root or load previous root
         try:
-            meta_root_page, meta_tree_conf = self._handler.get_meta_tree_conf()
+            meta_root_page, meta_tree_conf = self.handler.get_meta_tree_conf()
         except ValueError:
             #  init empty tree
-            self._root = self._bottom = self.LEAF(self._tree_conf)
-            # TODO: set root node (concurrent safety)
+            self._root = self._bottom = self.LEAF(self, self._tree_conf)
+            with self.handler.write_lock:
+                self.handler.set_node(self._root.page)
+                self.handler.set_meta_tree_conf(self._root.page, self._tree_conf)
         else:
-            self._root, self._tree_conf = self._handler.get_node(meta_root_page), meta_tree_conf
+            self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 
         self._count = 0
 
@@ -321,7 +330,7 @@ class BTree(object):
 
     @property
     def next_available_page(self) -> int:
-        return self._handler.next_available_page
+        return self.handler.next_available_page
 
     @property
     def order(self):

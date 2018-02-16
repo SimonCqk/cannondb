@@ -1,6 +1,6 @@
 import json
 import struct
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 from typing import Union, Type
 
 from cannondb.constants import INT_FORMAT, FLOAT_FORMAT
@@ -13,15 +13,15 @@ class NoSerializerError(Exception):
 class Serializer(metaclass=ABCMeta):
     __slots__ = []
 
-    @abstractmethod
-    def serialize(self, obj: object) -> bytes:
+    @staticmethod
+    def serialize(obj: object) -> bytes:
         """Serialize a key to bytes."""
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
-    def deserialize(self, data: bytes) -> object:
+    @staticmethod
+    def deserialize(data: bytes) -> object:
         """Create a key object from bytes."""
-        pass
+        raise NotImplementedError
 
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
@@ -30,49 +30,57 @@ class Serializer(metaclass=ABCMeta):
 class IntSerializer(Serializer):
     __slots__ = []
 
-    def serialize(self, obj: int) -> bytes:
+    @staticmethod
+    def serialize(obj: int) -> bytes:
         return struct.pack(INT_FORMAT, obj)
 
-    def deserialize(self, data: bytes) -> int:
+    @staticmethod
+    def deserialize(data: bytes) -> int:
         return struct.unpack(INT_FORMAT, data)[0]
 
 
 class FloatSerializer(Serializer):
     __slots__ = []
 
-    def serialize(self, obj: object) -> bytes:
+    @staticmethod
+    def serialize(obj: object) -> bytes:
         return struct.pack(FLOAT_FORMAT, obj)
 
-    def deserialize(self, data: bytes) -> float:
+    @staticmethod
+    def deserialize(data: bytes) -> float:
         return struct.unpack(FLOAT_FORMAT, data)[0]
 
 
 class StrSerializer(Serializer):
     __slots__ = []
 
-    def serialize(self, obj: str) -> bytes:
+    @staticmethod
+    def serialize(obj: str) -> bytes:
         return obj.encode(encoding='utf-8')
 
-    def deserialize(self, data: bytes) -> str:
+    @staticmethod
+    def deserialize(data: bytes) -> str:
         return data.decode(encoding='utf-8')
 
 
 class DictSerializer(Serializer):
     __slots__ = []
 
-    def serialize(self, obj: object) -> bytes:
+    @staticmethod
+    def serialize(obj: object) -> bytes:
         return json.dumps(obj, ensure_ascii=False).encode(encoding='utf-8')
 
-    def deserialize(self, data: bytes) -> dict:
+    @staticmethod
+    def deserialize(data: bytes) -> dict:
         return json.loads(data.decode(encoding='utf-8'))
 
 
 # make it a global var
 serializer_map = {
-    int: IntSerializer,
-    float: FloatSerializer,
-    str: StrSerializer,
-    dict: DictSerializer
+    int: IntSerializer(),
+    float: FloatSerializer(),
+    str: StrSerializer(),
+    dict: DictSerializer()
 }
 
 type_num_map = {
@@ -87,7 +95,7 @@ type_num_map = {
 }
 
 
-def serializer_switcher(t: Type[Union[int, float, str, dict]]):
+def serializer_switcher(t: Type[Union[int, float, str, dict]]) -> Serializer:
     """return corresponding serializer to arg type"""
     try:
         return serializer_map[t]
@@ -95,9 +103,9 @@ def serializer_switcher(t: Type[Union[int, float, str, dict]]):
         raise NoSerializerError('No corresponding serializer')
 
 
-def type_switcher(num: Union[Type, int]) -> Union[Type[Union[int, float, str, dict], int]]:
+def type_switcher(num_or_type):
     """return type(type-num) by type-num(type)"""
     try:
-        return type_num_map[num]
+        return type_num_map[num_or_type]
     except KeyError:
-        raise ValueError('No corresponding type to number {}'.format(num))
+        raise ValueError('No corresponding type to number {}'.format(num_or_type))

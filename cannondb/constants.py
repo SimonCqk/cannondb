@@ -36,7 +36,6 @@ INT_FORMAT = '!i'
 FLOAT_FORMAT = '!f'
 
 TreeConf = namedtuple('TreeConf', [
-    'tree',  # tree self
     'order',  # order of B tree
     'page_size',  # Size of a page within the tree in bytes
     'key_size',  # Maximum size of a key in bytes
