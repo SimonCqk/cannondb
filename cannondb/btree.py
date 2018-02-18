@@ -66,7 +66,7 @@ class FileHandler(object):
     def _fd_seek_end(self):
         self._fd.seek(0, io.SEEK_END)
 
-    def _get_page_data(self, page: int) -> bytes:
+    def get_page_data(self, page: int) -> bytes:
         page_start = page * self._tree_conf.page_size
 
         data = read_from_file(self._fd, page_start,
@@ -76,7 +76,7 @@ class FileHandler(object):
         else:
             return data
 
-    def _set_page_data(self, page: int, page_data: bytes):
+    def set_page_data(self, page: int, page_data: bytes):
         assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
@@ -94,11 +94,11 @@ class FileHandler(object):
                 self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT) +
                 bytes(self._tree_conf.page_size - length)  # padding
         )
-        self._set_page_data(0, data)
+        self.set_page_data(0, data)
 
     def get_meta_tree_conf(self) -> tuple:
         try:
-            data = self._get_page_data(0)
+            data = self.get_page_data(0)
         except PageOutOfRange:
             raise ValueError('Meta tree configure data has not set yet')
         root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
@@ -110,8 +110,8 @@ class FileHandler(object):
         key_size = int.from_bytes(data[page_size_end:key_size_end], ENDIAN)
         value_size_end = key_size_end + VALUE_LENGTH_LIMIT
         value_size = int.from_bytes(data[key_size_end:value_size_end], ENDIAN)
-        if order != self._tree_conf.tree.order:
-            order = self._tree_conf.tree.order
+        if order != self._tree_conf.order:
+            order = self._tree_conf.order
         self._tree_conf = TreeConf(order, page_size, key_size, value_size)
         return root_page, self._tree_conf
 
@@ -121,17 +121,22 @@ class FileHandler(object):
         return self.last_page
 
     def set_node(self, node: BNode):
-        self._set_page_data(node.page, node.dump())
+        self.set_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree=None):
         node = self._cache.get(page)
         if node:
             return node
-        data = self._get_page_data(page)
+        data = self.get_page_data(page)
         node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)
         self._cache[node.page] = node
         return node
+
+    def ensure_root_block(self, root: BNode):
+        """sync root node information with both memory and disk"""
+        self.set_node(root)
+        self.set_meta_tree_conf(root.page, root.tree_conf)
 
     def commit(self):
         if self._uncommitted_pages:
@@ -145,7 +150,7 @@ class FileHandler(object):
     def flush(self):
         with self.write_lock:
             for node in self._cache.values():
-                self._set_page_data(node.page, node.dump())
+                self.set_page_data(node.page, node.dump())
         self.commit()
 
 

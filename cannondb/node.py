@@ -136,6 +136,7 @@ class OverflowNode(BaseBNode):
             self.load(data)
 
     def load(self, data: bytes):
+        assert len(data) == self.tree_conf.page_size
         data_len_end = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT
         data_len = int.from_bytes(data[NODE_TYPE_LENGTH_LIMIT:data_len_end], ENDIAN)
         header_end = data_len_end + PAGE_ADDRESS_LIMIT
@@ -149,7 +150,8 @@ class OverflowNode(BaseBNode):
         if len(self.data) + header_len > self.tree_conf.page_size:
             detach_start = self.tree_conf.page_size - header_len
             self.next_page = self.tree.next_available_page
-            of = OverflowNode(self.tree_conf, self.next_page, self.page, data=self.data[detach_start:])
+            of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
+                              data=self.data[detach_start:])
             of.flush()
             self.data = self.data[0:detach_start]
         next_page = 0 if self.next_page is None else self.next_page
@@ -165,7 +167,15 @@ class OverflowNode(BaseBNode):
     def flush(self):
         """hard write overflow data into file"""
         if self.data:
-            self.tree.handler._set_page_data(self.page, self.data)
+            self.tree.handler.set_page_data(self.page, self.data)
+
+    def get_complete_data(self):
+        if self.next_page:
+            next_overflow = self.tree.handler.get_node(self.next_page, tree=self.tree)
+            assert isinstance(next_overflow, OverflowNode)
+            return self.data + next_overflow.get_complete_data()
+        else:
+            return self.data
 
 
 class BNode(BaseBNode):
@@ -201,6 +211,10 @@ class BNode(BaseBNode):
         self.next_page = int.from_bytes(data[children_len_end:header_end], ENDIAN)
         if self.next_page == 0:
             self.next_page = None
+        else:
+            overflow_node = self.tree.handler.get_node(self.next_page)
+            assert isinstance(overflow_node, OverflowNode)
+            data += overflow_node.get_complete_data()
         each_pair_len = KeyValPair(self.tree_conf).length
         pairs_end = header_end + pairs_len
         for off_set in range(header_end, pairs_end, each_pair_len):
@@ -224,7 +238,8 @@ class BNode(BaseBNode):
         if len(data) + header_len > self.tree_conf.page_size:  # overflow
             detach_start = self.tree_conf.page_size - header_len
             self.next_page = self.tree.next_available_page
-            of = OverflowNode(self.tree_conf, self.next_page, self.page, data=bytes(data[detach_start:]))
+            of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
+                              data=bytes(data[detach_start:]))
             of.flush()
             data = data[0:detach_start]
         next_page = 0 if self.next_page is None else self.next_page
@@ -269,7 +284,7 @@ class BNode(BaseBNode):
             parent, parent_index = ancestors.pop()
             # try to lend to the left neighboring sibling
             if parent_index:
-                left_sib = parent.children[parent_index - 1]
+                left_sib = self.tree.handler.get_node(parent.children[parent_index - 1])
                 if len(left_sib.contents) < self.tree_conf.order:
                     self.lateral(
                         parent, parent_index, left_sib, parent_index - 1)
@@ -277,7 +292,7 @@ class BNode(BaseBNode):
 
             # try the right neighbor
             if parent_index + 1 < len(parent.children):
-                right_sib = parent.children[parent_index + 1]
+                right_sib = self.tree.handler.get_node(parent.children[parent_index + 1])
                 if len(right_sib.contents) < self.tree_conf.order:
                     self.lateral(
                         parent, parent_index, right_sib, parent_index + 1)
@@ -286,13 +301,15 @@ class BNode(BaseBNode):
         sibling, mid_pair = self.split()
 
         if not parent:
-            parent, parent_index = self.tree.BRANCH(
-                self.tree_conf, children=[self]), 0
+            parent, parent_index = self.tree.BRANCH(tree=self.tree,
+                                                    tree_conf=self.tree_conf, children=[self.page]), 0
             self.tree._root = parent
+            self.tree.handler.ensure_root_block(self.tree._root)
 
         # pass the median up to the parent
         parent.contents.insert(parent_index, mid_pair)
-        parent.children.insert(parent_index + 1, sibling)
+        parent.children.insert(parent_index + 1, sibling.page)
+        self.tree.handler.set_node(parent)  # sync
         if len(parent.contents) > parent.tree.order:
             parent.shrink(ancestors)
 
@@ -306,14 +323,14 @@ class BNode(BaseBNode):
         left_sib = right_sib = None
         # try to borrow from the right sibling
         if parent_index + 1 < len(parent.children):
-            right_sib = parent.children[parent_index + 1]
+            right_sib = self.tree.handler.get_node(parent.children[parent_index + 1])
             if len(right_sib.contents) > self.tree.min_elements:
                 right_sib.lateral(parent, parent_index + 1, self, parent_index)
                 return
 
         # try to borrow from the left sibling
         if parent_index:
-            left_sib = parent.children[parent_index - 1]
+            left_sib = self.tree.handler.get_node(parent.children[parent_index - 1])
             if len(left_sib.contents) > self.tree.min_elements:
                 left_sib.lateral(parent, parent_index - 1, self, parent_index)
                 return
@@ -326,6 +343,9 @@ class BNode(BaseBNode):
                 left_sib.children.extend(self.children)
             parent.contents.pop(parent_index - 1)
             parent.children.pop(parent_index)
+            # sync
+            self.tree.handler.set_node(left_sib)
+            self.tree.handler.set_node(parent)
         else:
             self.contents.append(parent.contents[parent_index])
             self.contents.extend(right_sib.contents)
@@ -333,6 +353,9 @@ class BNode(BaseBNode):
                 self.children.extend(right_sib.children)
             parent.contents.pop(parent_index)
             parent.children.pop(parent_index + 1)
+            # sync
+            self.tree.handler.set_node(self)
+            self.tree.handler.set_node(parent)
 
         if len(parent.contents) < self.tree.min_elements:
             if ancestors:
@@ -341,6 +364,7 @@ class BNode(BaseBNode):
             elif not parent.contents:
                 # parent is root, and it's now empty
                 self.tree._root = left_sib or self
+                self.tree.handler.ensure_root_block(self.tree._root)
 
     def split(self):
         """
@@ -350,10 +374,10 @@ class BNode(BaseBNode):
         center = len(self.contents) // 2
         mid_pair = self.contents[center]
         sibling = type(self)(
-            self.tree,
-            self.tree_conf,
-            self.contents[center + 1:],
-            self.children[center + 1:])
+            tree=self.tree,
+            tree_conf=self.tree_conf,
+            contents=self.contents[center + 1:],
+            children=self.children[center + 1:])
         self.contents = self.contents[:center]
         self.children = self.children[:center + 1]
         self.tree.handler.set_node(self)
@@ -370,10 +394,10 @@ class BNode(BaseBNode):
             # try promoting from the right subtree first,
             # but only if it won't have to resize
             additional_ancestors = [(self, index + 1)]
-            descendant = self.children[index + 1]
+            descendant = self.tree.handler.get_node(self.children[index + 1])
             while descendant.children:
                 additional_ancestors.append((descendant, 0))
-                descendant = descendant.children[0]
+                descendant = self.tree.handler.get_node(descendant.children[0])
             if len(descendant.contents) > self.tree.min_elements:
                 ancestors.extend(additional_ancestors)
                 self.contents[index] = descendant.contents[0]
@@ -382,11 +406,11 @@ class BNode(BaseBNode):
 
             # fall back to the left child
             additional_ancestors = [(self, index)]
-            descendant = self.children[index]
+            descendant = self.tree.handler.get_node(self.children[index])
             while descendant.children:
                 additional_ancestors.append(
                     (descendant, len(descendant.children) - 1))
-                descendant = descendant.children[-1]
+                descendant = self.tree.handler.get_node(descendant.children[-1])
             ancestors.extend(additional_ancestors)
             self.contents[index] = descendant.contents[-1]
             descendant.remove(len(descendant.children) - 1, ancestors)

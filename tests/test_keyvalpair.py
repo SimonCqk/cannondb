@@ -1,20 +1,26 @@
 from cannondb.constants import TreeConf
 from cannondb.node import KeyValPair
+from cannondb.utils import write_to_file, read_from_file, open_database_file
 
 tree_conf = TreeConf(100, 8192, 16, 32)
 
+test_file_name = 'test_tmp'
+
 
 def test_normal():
+    f = open_database_file(test_file_name)
     orig = KeyValPair(tree_conf, 'test', 1)
     as_bytes = orig.dump()
     assert len(as_bytes) == orig.length
+    write_to_file(f, as_bytes)
     # print(as_bytes)
-    after = KeyValPair(tree_conf, data=as_bytes)
+    data = read_from_file(f, 0, len(as_bytes))
+    after = KeyValPair(tree_conf, data=data)
     print('key=', after.key)
     print('value=', after.value)
     del after
     after = KeyValPair(tree_conf)
-    after.load(as_bytes)
+    after.load(data)
     print('key=', after.key)
     print('value=', after.value)
 
