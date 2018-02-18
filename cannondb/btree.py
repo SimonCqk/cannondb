@@ -172,8 +172,7 @@ class BTree(object):
             #  init empty tree
             self._root = self._bottom = self.LEAF(self, self._tree_conf)
             with self.handler.write_lock:
-                self.handler.set_node(self._root.page)
-                self.handler.set_meta_tree_conf(self._root.page, self._tree_conf)
+                self.handler.ensure_root_block(self._root)
         else:
             self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 
@@ -193,7 +192,7 @@ class BTree(object):
             if index < len(current.contents) \
                     and current.contents[index].key == key:
                 return ancestry
-            current = current.children[index]
+            current = self.handler.get_node(current.children[index])
 
         index = bisect.bisect_left(current.contents, key)
         ancestry.append((current, index))
@@ -224,7 +223,7 @@ class BTree(object):
                 node.contents[index].value = value
         else:
             while getattr(node, 'children', None):
-                node = node.children[index]
+                node = self.handler.get_node(node.children[index])
                 index = bisect.bisect_left(node.contents, key)
                 ancestors.append((node, index))
             node, index = ancestors.pop()
@@ -302,10 +301,10 @@ class BTree(object):
         def _recurse(node):
             if node.children:
                 for child, it in zip(node.children, node.contents):
-                    for child_item in _recurse(child):
+                    for child_item in _recurse(self.handler.get_node(child)):
                         yield child_item
                     yield {it.key: it.val}
-                for child_item in _recurse(node.children[-1]):
+                for child_item in _recurse(self.handler.get_node(node.children[-1])):
                     yield child_item
             else:
                 for it in node.contents:
@@ -317,7 +316,7 @@ class BTree(object):
     def __repr__(self):
         def recurse(node, all_items, depth):
             all_items.append((' ' * depth) + repr(node))
-            for node in getattr(node, "children", list()):
+            for node in self.handler.get_node(getattr(node, 'children', list())):
                 recurse(node, all_items, depth + 1)
 
         _all = list()
