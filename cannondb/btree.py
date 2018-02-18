@@ -7,11 +7,7 @@ import rwlock
 
 from cannondb.constants import *
 from cannondb.node import BNode, BaseBNode
-from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file
-
-
-class PageOutOfRange(Exception):
-    pass
+from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, EndOfFileError
 
 
 class FileHandler(object):
@@ -72,7 +68,7 @@ class FileHandler(object):
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
         if data == b'':
-            raise PageOutOfRange('Page index out of range or page data noe set yet')
+            raise EndOfFileError('Page index out of range or page data noe set yet')
         else:
             return data
 
@@ -91,7 +87,7 @@ class FileHandler(object):
                 self._tree_conf.order.to_bytes(1, ENDIAN) +
                 self._tree_conf.page_size.to_bytes(PAGE_LENGTH_LIMIT, ENDIAN) +
                 self._tree_conf.key_size.to_bytes(KEY_LENGTH_LIMIT, ENDIAN) +
-                self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT) +
+                self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT, ENDIAN) +
                 bytes(self._tree_conf.page_size - length)  # padding
         )
         self.set_page_data(0, data)
@@ -99,7 +95,7 @@ class FileHandler(object):
     def get_meta_tree_conf(self) -> tuple:
         try:
             data = self.get_page_data(0)
-        except PageOutOfRange:
+        except EndOfFileError:
             raise ValueError('Meta tree configure data has not set yet')
         root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
         order_end = PAGE_ADDRESS_LIMIT + 1
@@ -161,7 +157,7 @@ class BTree(object):
     def __init__(self, file_name: str, order=100, page_size: int = 8192, key_size: int = 16,
                  value_size: int = 32, cache_size=128):
         self._file_name = file_name
-        self._tree_conf = TreeConf(tree=self, order=order, page_size=page_size,
+        self._tree_conf = TreeConf(order=order, page_size=page_size,
                                    key_size=key_size, value_size=value_size)
         self.handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
         self._order = order
@@ -221,6 +217,7 @@ class BTree(object):
                 raise ValueError('{key} has existed'.format(key=key))
             else:
                 node.contents[index].value = value
+                self.handler.set_node(node)
         else:
             while getattr(node, 'children', None):
                 node = self.handler.get_node(node.children[index])

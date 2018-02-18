@@ -68,19 +68,34 @@ class KeyValPair(metaclass=ABCMeta):
         return data
 
     def __eq__(self, other):
-        return self.key == other.key
+        if isinstance(other, KeyValPair):
+            return self.key == other.key
+        else:
+            return self.key == other
 
     def __lt__(self, other):
-        return self.key < other.key
+        if isinstance(other, KeyValPair):
+            return self.key < other.key
+        else:
+            return self.key < other
 
     def __le__(self, other):
-        return self.key <= other.key
+        if isinstance(other, KeyValPair):
+            return self.key <= other.key
+        else:
+            return self.key <= other
 
     def __gt__(self, other):
-        return self.key > other.key
+        if isinstance(other, KeyValPair):
+            return self.key > other.key
+        else:
+            return self.key > other
 
     def __ge__(self, other):
-        return self.key >= other.key
+        if isinstance(other, KeyValPair):
+            return self.key >= other.key
+        else:
+            return self.key >= other
 
     def __str__(self):
         return '<{key}:{val}>'.format(key=self.key, val=self.value)
