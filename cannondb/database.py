@@ -1,12 +1,14 @@
 """
 This file include the main interface of cannondb.
 """
-from .storages import FileStorage
+from abc import ABCMeta
+
+from cannondb.storages import FileStorage
+from cannondb.utils import with_metaclass
 
 
-class CannonDB(object):
+class CannonDB(with_metaclass(ABCMeta)):
     """   """
-    DEFAULT_TABLE = '_default'
     DEFAULT_STORAGE = FileStorage
 
     def __init__(self, file):

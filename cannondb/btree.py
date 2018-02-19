@@ -1,12 +1,12 @@
 import bisect
 import io
 import math
-from typing import Iterable
+from typing import Iterable, Union
 
 import rwlock
 
 from cannondb.constants import *
-from cannondb.node import BNode, BaseBNode
+from cannondb.node import BNode, BaseBNode, OverflowNode
 from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, EndOfFileError
 
 
@@ -62,7 +62,7 @@ class FileHandler(object):
     def _fd_seek_end(self):
         self._fd.seek(0, io.SEEK_END)
 
-    def get_page_data(self, page: int) -> bytes:
+    def _get_page_data(self, page: int) -> bytes:
         page_start = page * self._tree_conf.page_size
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
@@ -71,7 +71,7 @@ class FileHandler(object):
         else:
             return data
 
-    def set_page_data(self, page: int, page_data: bytes):
+    def _set_page_data(self, page: int, page_data: bytes):
         assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
@@ -89,11 +89,11 @@ class FileHandler(object):
                 self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT, ENDIAN) +
                 bytes(self._tree_conf.page_size - length)  # padding
         )
-        self.set_page_data(0, data)
+        self._set_page_data(0, data)
 
     def get_meta_tree_conf(self) -> tuple:
         try:
-            data = self.get_page_data(0)
+            data = self._get_page_data(0)
         except EndOfFileError:
             raise ValueError('Meta tree configure data has not set yet')
         root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
@@ -115,21 +115,21 @@ class FileHandler(object):
         self.last_page += 1
         return self.last_page
 
-    def set_node(self, node: BNode):
-        self.set_page_data(node.page, node.dump())
+    def set_node(self, node: Union[BNode, OverflowNode]):
+        self._set_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree):
         node = self._cache.get(page)
         if node:
             return node
-        data = self.get_page_data(page)
+        data = self._get_page_data(page)
         node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)
         self._cache[node.page] = node
         return node
 
     def ensure_root_block(self, root: BNode):
-        """sync root node information with both memory and disk"""
+        """sync root node information with both _memory and disk"""
         self.set_node(root)
         self.set_meta_tree_conf(root.page, root.tree_conf)
 
@@ -145,13 +145,17 @@ class FileHandler(object):
     def flush(self):
         with self.write_lock:
             for node_page, node in self._cache:
-                self.set_page_data(node_page, node.dump())
+                self._set_page_data(node_page, node.dump())
             self._cache.clear()
         self.commit()
 
+    def close(self):
+        self.flush()
+        self._fd.close()
+
 
 class BTree(object):
-    __slots__ = ('_file_name', '_order', '_count', '_root', '_bottom', '_tree_conf', 'handler')
+    __slots__ = ('_file_name', '_order', '_count', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
     def __init__(self, file_name: str, order=100, page_size: int = 8192, key_size: int = 16,
@@ -173,6 +177,7 @@ class BTree(object):
             self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 
         self._count = 0
+        self._closed = False
 
     def _path_to(self, key):
         """
@@ -248,7 +253,7 @@ class BTree(object):
             node, index = ancestors.pop()
             node.remove(index, ancestors)
         else:
-            raise ValueError('%r not in %s' % (key, self.__class__.__name__))
+            raise KeyError('{key} not in {self}'.format(key=key, self=self.__class__.__name__))
         self._count -= 1
 
     def _get(self, key):
@@ -299,14 +304,14 @@ class BTree(object):
         def _recurse(node):
             if node.children:
                 for child, it in zip(node.children, node.contents):
-                    for child_item in _recurse(self.handler.get_node(child)):
+                    for child_item in _recurse(self.handler.get_node(child, tree=self)):
                         yield child_item
-                    yield {it.key: it.val}
-                for child_item in _recurse(self.handler.get_node(node.children[-1])):
+                    yield {it.key: it.value}
+                for child_item in _recurse(self.handler.get_node(node.children[-1], tree=self)):
                     yield child_item
             else:
                 for it in node.contents:
-                    yield {it.key: it.val}
+                    yield {it.key: it.value}
 
         for item in _recurse(self._root):
             yield item
@@ -325,10 +330,16 @@ class BTree(object):
         return self.count
 
     def __setitem__(self, key, value):
-        self.insert(key, value)
+        self.insert(key, value, override=True)
 
     __getitem__ = get
     __delitem__ = remove
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     @property
     def next_available_page(self) -> int:
@@ -353,3 +364,10 @@ class BTree(object):
     @count.setter
     def count(self, value):
         raise RuntimeError('count of b-tree elements is read-only')
+
+    def close(self):
+        if self._closed:
+            return
+        self.handler.ensure_root_block(self._root)
+        self.handler.close()
+        self._closed = True

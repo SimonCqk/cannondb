@@ -182,7 +182,7 @@ class OverflowNode(BaseBNode):
     def flush(self):
         """hard write overflow data into file"""
         if self.data:
-            self.tree.handler.set_page_data(self.page, self.data)
+            self.tree.handler.set_node(self)
 
     def get_complete_data(self):
         if self.next_page:
