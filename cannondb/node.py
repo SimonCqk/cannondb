@@ -16,7 +16,7 @@ class KeyValPair(metaclass=ABCMeta):
         self.length = (KEY_LENGTH_LIMIT + self.tree_conf.key_size +
                        VALUE_LENGTH_LIMIT + self.tree_conf.value_size +
                        2 * SERIALIZER_TYPE_LENGTH_LIMIT)
-        if self.key and self.value:
+        if self.key is not None and self.value is not None:
             self.key_ser = serializer_switcher(type(key))
             self.val_ser = serializer_switcher(type(value))
         if data:
@@ -48,7 +48,7 @@ class KeyValPair(metaclass=ABCMeta):
         self.value = self.val_ser.deserialize(data[val_len_end:val_end])
 
     def dump(self) -> bytes:
-        assert self.key and self.value
+        assert self.key is not None and self.value is not None
         key_as_bytes = self.key_ser.serialize(self.key)
         key_len = len(key_as_bytes)
         key_type_as_bytes = type_switcher(type(self.key)).to_bytes(SERIALIZER_TYPE_LENGTH_LIMIT, ENDIAN)
@@ -213,8 +213,9 @@ class BNode(BaseBNode):
 
     def __repr__(self):
         name = 'Branch' if getattr(self, 'children', None) else 'Leaf'
-        return '<{name} [{pairs}]>'.format(
-            name=name, pairs=','.join([str(it) for it in self.contents]))
+        return '<{name} [pairs= {pairs}] [children= {children}]>'.format(
+            name=name, pairs=','.join([str(it) for it in self.contents]),
+            children=','.join([str(ch) for ch in self.children]))
 
     def load(self, data: bytes):
         assert len(data) == self.tree_conf.page_size
@@ -299,7 +300,7 @@ class BNode(BaseBNode):
             parent, parent_index = ancestors.pop()
             # try to lend to the left neighboring sibling
             if parent_index:
-                left_sib = self.tree.handler.get_node(parent.children[parent_index - 1])
+                left_sib = self.tree.handler.get_node(parent.children[parent_index - 1], tree=self.tree)
                 if len(left_sib.contents) < self.tree_conf.order:
                     self.lateral(
                         parent, parent_index, left_sib, parent_index - 1)
@@ -307,7 +308,7 @@ class BNode(BaseBNode):
 
             # try the right neighbor
             if parent_index + 1 < len(parent.children):
-                right_sib = self.tree.handler.get_node(parent.children[parent_index + 1])
+                right_sib = self.tree.handler.get_node(parent.children[parent_index + 1], tree=self.tree)
                 if len(right_sib.contents) < self.tree_conf.order:
                     self.lateral(
                         parent, parent_index, right_sib, parent_index + 1)
@@ -325,6 +326,7 @@ class BNode(BaseBNode):
         parent.contents.insert(parent_index, mid_pair)
         parent.children.insert(parent_index + 1, sibling.page)
         self.tree.handler.set_node(parent)  # sync
+        self.tree.handler.set_node(sibling)  # IMPORTANT!
         if len(parent.contents) > parent.tree.order:
             parent.shrink(ancestors)
 
@@ -338,14 +340,14 @@ class BNode(BaseBNode):
         left_sib = right_sib = None
         # try to borrow from the right sibling
         if parent_index + 1 < len(parent.children):
-            right_sib = self.tree.handler.get_node(parent.children[parent_index + 1])
+            right_sib = self.tree.handler.get_node(parent.children[parent_index + 1], tree=self.tree)
             if len(right_sib.contents) > self.tree.min_elements:
                 right_sib.lateral(parent, parent_index + 1, self, parent_index)
                 return
 
         # try to borrow from the left sibling
         if parent_index:
-            left_sib = self.tree.handler.get_node(parent.children[parent_index - 1])
+            left_sib = self.tree.handler.get_node(parent.children[parent_index - 1], tree=self.tree)
             if len(left_sib.contents) > self.tree.min_elements:
                 left_sib.lateral(parent, parent_index - 1, self, parent_index)
                 return
@@ -399,9 +401,10 @@ class BNode(BaseBNode):
         return sibling, mid_pair
 
     def insert(self, index, key, value, ancestors):
-        self.contents.insert(index, KeyValPair(self.tree_conf, key, value))
+        self.contents.insert(index, KeyValPair(self.tree_conf, key=key, value=value))
         if len(self.contents) > self.tree_conf.order:
             self.shrink(ancestors)
+        self.tree.handler.set_node(self)
 
     def remove(self, index, ancestors):
 
@@ -409,27 +412,32 @@ class BNode(BaseBNode):
             # try promoting from the right subtree first,
             # but only if it won't have to resize
             additional_ancestors = [(self, index + 1)]
-            descendant = self.tree.handler.get_node(self.children[index + 1])
+            descendant = self.tree.handler.get_node(self.children[index + 1], tree=self.tree)
             while descendant.children:
                 additional_ancestors.append((descendant, 0))
-                descendant = self.tree.handler.get_node(descendant.children[0])
+                descendant = self.tree.handler.get_node(descendant.children[0], tree=self.tree)
             if len(descendant.contents) > self.tree.min_elements:
                 ancestors.extend(additional_ancestors)
                 self.contents[index] = descendant.contents[0]
                 descendant.remove(0, ancestors)
+                self.tree.handler.set_node(self)
+                self.tree.handler.set_node(descendant)
                 return
 
             # fall back to the left child
             additional_ancestors = [(self, index)]
-            descendant = self.tree.handler.get_node(self.children[index])
+            descendant = self.tree.handler.get_node(self.children[index], tree=self.tree)
             while descendant.children:
                 additional_ancestors.append(
                     (descendant, len(descendant.children) - 1))
-                descendant = self.tree.handler.get_node(descendant.children[-1])
+                descendant = self.tree.handler.get_node(descendant.children[-1], tree=self.tree)
             ancestors.extend(additional_ancestors)
             self.contents[index] = descendant.contents[-1]
             descendant.remove(len(descendant.children) - 1, ancestors)
+            self.tree.handler.set_node(self)
+            self.tree.handler.set_node(descendant)
         else:
             self.contents.pop(index)
             if len(self.contents) < self.tree.min_elements and ancestors:
                 self.grow(ancestors)
+            self.tree.handler.set_node(self)

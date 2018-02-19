@@ -10,10 +10,12 @@ def test_insert():
     tree.insert('a', 1)
     tree.insert('b', 2)
     tree.insert('c', 3)
-    tree.remove('a')
+
+
+def test_scale_insert():
+    for i in range(10000):
+        tree.insert(str(i), i, override=True)
 
 
 if __name__ == '__main__':
-    test_insert()
-    print(tree['a'])
-
+    test_scale_insert()

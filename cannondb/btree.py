@@ -64,7 +64,6 @@ class FileHandler(object):
 
     def get_page_data(self, page: int) -> bytes:
         page_start = page * self._tree_conf.page_size
-
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
         if data == b'':
@@ -120,7 +119,7 @@ class FileHandler(object):
         self.set_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
-    def get_node(self, page: int, tree=None):
+    def get_node(self, page: int, tree):
         node = self._cache.get(page)
         if node:
             return node
@@ -145,8 +144,9 @@ class FileHandler(object):
 
     def flush(self):
         with self.write_lock:
-            for node in self._cache.values():
-                self.set_page_data(node.page, node.dump())
+            for node_page, node in self._cache:
+                self.set_page_data(node_page, node.dump())
+            self._cache.clear()
         self.commit()
 
 
@@ -188,7 +188,7 @@ class BTree(object):
             if index < len(current.contents) \
                     and current.contents[index].key == key:
                 return ancestry
-            current = self.handler.get_node(current.children[index])
+            current = self.handler.get_node(current.children[index], tree=self)
 
         index = bisect.bisect_left(current.contents, key)
         ancestry.append((current, index))
@@ -220,7 +220,7 @@ class BTree(object):
                 self.handler.set_node(node)
         else:
             while getattr(node, 'children', None):
-                node = self.handler.get_node(node.children[index])
+                node = self.handler.get_node(node.children[index], tree=self)
                 index = bisect.bisect_left(node.contents, key)
                 ancestors.append((node, index))
             node, index = ancestors.pop()
@@ -254,6 +254,7 @@ class BTree(object):
     def _get(self, key):
         ancestor = self._path_to(key)
         node, index = ancestor[-1]
+
         if BTree._present(key, ancestor):
             yield node.contents[index].value
         else:
