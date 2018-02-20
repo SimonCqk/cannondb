@@ -7,6 +7,9 @@ from cannondb.serializer import serializer_switcher, type_switcher
 
 
 class KeyValPair(metaclass=ABCMeta):
+    """
+    Unit stores a pair of key-value, switch its serializer automatically by its type.
+    """
     __slots__ = ('key', 'value', 'length', 'tree_conf', 'key_ser', 'val_ser')
 
     def __init__(self, tree_conf: TreeConf, key=None, value=None, data: bytes = None):
@@ -135,7 +138,9 @@ class BaseBNode(metaclass=ABCMeta):
 
 
 class OverflowNode(BaseBNode):
-    """Recording overflow pages' information and raw data"""
+    """
+    Recording overflow pages' information and raw data
+    """
     __slots__ = ('tree', 'tree_conf', 'page', 'parent_page', 'next_page', 'data')
     PAGE_TYPE = _PageType.OVERFLOW_PAGE
 
@@ -180,11 +185,17 @@ class OverflowNode(BaseBNode):
         return header + self.data + bytes(padding)
 
     def flush(self):
-        """hard write overflow data into file"""
+        """
+        hard write overflow data into file
+        """
         if self.data:
             self.tree.handler.set_node(self)
 
     def get_complete_data(self):
+        """
+        There may not only one overflow page, merge all overflow data and return it to parent,
+        [BNode or OverflowNode]
+        """
         if self.next_page:
             next_overflow = self.tree.handler.get_node(self.next_page, tree=self.tree)
             assert isinstance(next_overflow, OverflowNode)
@@ -216,6 +227,8 @@ class BNode(BaseBNode):
         return '<{name} [pairs= {pairs}] [children= {children}]>'.format(
             name=name, pairs=','.join([str(it) for it in self.contents]),
             children=','.join([str(ch) for ch in self.children]))
+
+    __str__ = __repr__
 
     def load(self, data: bytes):
         assert len(data) == self.tree_conf.page_size

@@ -7,15 +7,18 @@ import rwlock
 
 from cannondb.constants import *
 from cannondb.node import BNode, BaseBNode, OverflowNode
-from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, EndOfFileError
+from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, file_flush_and_sync, \
+    EndOfFileError
 
 
 class FileHandler(object):
-    """Handling-layer between B tree engine and underlying db file"""
+    """
+    Handling-layer between B tree engine and underlying db file
+    """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_lock', 'last_page',
                  '_committed_pages', '_uncommitted_pages')
 
-    def __init__(self, file_name, tree_conf: TreeConf, cache_size=512):
+    def __init__(self, file_name, tree_conf: TreeConf, cache_size=256):
         self._filename = file_name
         self._tree_conf = tree_conf
 
@@ -42,6 +45,7 @@ class FileHandler(object):
             def __exit__(_self, exc_type, exc_val, exc_tb):
                 if exc_type:
                     self._cache.clear()
+                    self.rollback()
                 else:
                     pass
                 self._lock.writer_lock.release()
@@ -62,7 +66,10 @@ class FileHandler(object):
     def _fd_seek_end(self):
         self._fd.seek(0, io.SEEK_END)
 
-    def _get_page_data(self, page: int) -> bytes:
+    def _read_page_data(self, page: int) -> bytes:
+        """
+        read No.page data from db file
+        """
         page_start = page * self._tree_conf.page_size
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
@@ -71,7 +78,11 @@ class FileHandler(object):
         else:
             return data
 
-    def _set_page_data(self, page: int, page_data: bytes, f_sync=False):
+    def _write_page_data(self, page: int, page_data: bytes, f_sync=False):
+        """
+        write page data to position No.page in db file, call system sync if specified f_sync,
+        but sync is an expensive operation.
+        """
         assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
@@ -79,6 +90,10 @@ class FileHandler(object):
         write_to_file(self._fd, page_data, f_sync=f_sync)
 
     def set_meta_tree_conf(self, root_page: int, tree_conf: TreeConf):
+        """
+        set current tree configuration into db file, recorded by first page.
+        file sync is necessary.
+        """
         self._tree_conf = tree_conf
         length = PAGE_ADDRESS_LIMIT + 1 + PAGE_LENGTH_LIMIT + KEY_LENGTH_LIMIT + VALUE_LENGTH_LIMIT
         data = (
@@ -89,11 +104,14 @@ class FileHandler(object):
                 self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT, ENDIAN) +
                 bytes(self._tree_conf.page_size - length)  # padding
         )
-        self._set_page_data(0, data, f_sync=True)
+        self._write_page_data(0, data, f_sync=True)
 
     def get_meta_tree_conf(self) -> tuple:
+        """
+        read former recorded tree configuration from db file, first page
+        """
         try:
-            data = self._get_page_data(0)
+            data = self._read_page_data(0)
         except EndOfFileError:
             raise ValueError('Meta tree configure data has not set yet')
         root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
@@ -116,24 +134,31 @@ class FileHandler(object):
         return self.last_page
 
     def set_node(self, node: Union[BNode, OverflowNode]):
-        self._set_page_data(node.page, node.dump())
+        """
+        add & update node data into db file and also add to cache
+        """
+        self._write_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree):
+        """
+        try get node from cache to avoid IO op, if not exist, read and load from db file
+        """
         node = self._cache.get(page)
         if node:
             return node
-        data = self._get_page_data(page)
+        data = self._read_page_data(page)
         node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)
         self._cache[node.page] = node
         return node
 
     def ensure_root_block(self, root: BNode):
-        """sync root node information with both _memory and disk"""
+        """sync root node information with both memory and disk"""
         self.set_node(root)
         self.set_meta_tree_conf(root.page, root.tree_conf)
 
     def commit(self):
+        """sync uncommitted changes with db file"""
         if self._uncommitted_pages:
             self._committed_pages.update(self._uncommitted_pages)
             self._uncommitted_pages.clear()
@@ -144,21 +169,23 @@ class FileHandler(object):
             self._uncommitted_pages.clear()
 
     def flush(self):
+        """flush uncommitted changes to db file then clear the cache"""
         with self.write_lock:
             for node_page, node in self._cache.items():
-                self._set_page_data(node_page, node.dump(), f_sync=True)
+                self._write_page_data(node_page, node.dump())
+            file_flush_and_sync(self._fd)
             self._cache.clear()
 
     def close(self):
-        self.flush()
+        self.commit()
         self._fd.close()
 
 
 class BTree(object):
-    __slots__ = ('_file_name', '_order', '_count', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
+    __slots__ = ('_file_name', '_order', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
-    def __init__(self, file_name: str, order=100, page_size: int = 8192, key_size: int = 16,
+    def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 16,
                  value_size: int = 32, cache_size=128):
         self._file_name = file_name
         self._tree_conf = TreeConf(order=order, page_size=page_size,
@@ -176,7 +203,6 @@ class BTree(object):
         else:
             self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 
-        self._count = 0
         self._closed = False
 
     def _path_to(self, key):
@@ -230,7 +256,6 @@ class BTree(object):
                 ancestors.append((node, index))
             node, index = ancestors.pop()
             node.insert(index, key, value, ancestors)
-        self._count += 1
 
     def multi_insert(self, pairs: Iterable, override=False):
         """
@@ -254,7 +279,6 @@ class BTree(object):
             node.remove(index, ancestors)
         else:
             raise KeyError('{key} not in {self}'.format(key=key, self=self.__class__.__name__))
-        self._count -= 1
 
     def _get(self, key):
         ancestor = self._path_to(key)
@@ -276,31 +300,34 @@ class BTree(object):
         except StopIteration:
             return default
 
-    def iteritems(self):
+    def _iteritems(self):
         for item in self:
             yield item
 
-    def iterkeys(self):
+    def _iterkeys(self):
         for key, _ in self:
             yield key
 
-    def itervalues(self):
+    def _itervalues(self):
         for _, value in self:
             yield value
 
     def keys(self) -> list:
-        return list(self.iterkeys())
+        return list(self._iterkeys())
 
     def values(self) -> list:
-        return list(self.itervalues())
+        return list(self._itervalues())
 
     def items(self) -> list:
-        return list(self.iteritems())
+        return list(self._iteritems())
 
     def __contains__(self, key):
         return BTree._present(key, self._path_to(key))
 
     def __iter__(self):
+        """
+        support iterate B tree by yielding a key-value pair each time
+        """
         def _recurse(node):
             if node.children:
                 for child, it in zip(node.children, node.contents):
@@ -327,7 +354,7 @@ class BTree(object):
         return '\n'.join(_all)
 
     def __len__(self):
-        return self.count
+        return len([_ for _ in self])
 
     def __setitem__(self, key, value):
         self.insert(key, value, override=True)
@@ -358,12 +385,8 @@ class BTree(object):
         return math.ceil(self.order / 2)
 
     @property
-    def count(self):
-        return self._count
-
-    @count.setter
-    def count(self, value):
-        raise RuntimeError('count of b-tree elements is read-only')
+    def is_open(self):
+        return not self._closed
 
     def close(self):
         if self._closed:

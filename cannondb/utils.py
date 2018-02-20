@@ -9,17 +9,22 @@ class EndOfFileError(Exception):
     pass
 
 
-def open_database_file(file_name, suffix='.cdb', mode='rb+'):
-    try:
-        f = open(file_name + suffix, mode, buffering=0)
-    except IOError:
+def open_database_file(file_name, suffix='.cdb'):
+    """
+    open a file in binary mode, if not exist then create it
+    """
+    if os.path.exists(file_name):
+        f = open(file_name + suffix, 'rb+', buffering=0)
+    else:
         fd = os.open(file_name + suffix, os.O_RDWR | os.O_CREAT)
-        f = os.fdopen(fd, mode)
+        f = os.fdopen(fd, 'rb+')
     return f
 
 
 def file_flush_and_sync(f: io.FileIO):
-    """ensure write the file’s data to disk, but it's a EXPENSIVE op"""
+    """
+    call system sync, ensure write the file’s data to disk, but it's a EXPENSIVE op
+    """
     f.flush()
     os.fsync(f.fileno())
 
