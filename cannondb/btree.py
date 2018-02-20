@@ -185,8 +185,8 @@ class BTree(object):
     __slots__ = ('_file_name', '_order', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
-    def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 32,
-                 value_size: int = 32, cache_size=128):
+    def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 24,
+                 value_size: int = 48, cache_size=128):
         self._file_name = file_name
         # adjust page size.
         # when (value_size + key_size + PAGE_ADDRESS_LIMIT) * order > page_size,
