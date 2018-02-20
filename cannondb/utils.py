@@ -19,6 +19,7 @@ def open_database_file(file_name, suffix='.cdb', mode='rb+'):
 
 
 def file_flush_and_sync(f: io.FileIO):
+    """ensure write the file’s data to disk, but it's a EXPENSIVE op"""
     f.flush()
     os.fsync(f.fileno())
 
@@ -37,7 +38,7 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     return data
 
 
-def write_to_file(file_fd: io.FileIO, data: bytes, f_sync: bool = True):
+def write_to_file(file_fd: io.FileIO, data: bytes, f_sync: bool = False):
     length_to_write = len(data)
     written = 0
     while written < length_to_write:

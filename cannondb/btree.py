@@ -71,12 +71,12 @@ class FileHandler(object):
         else:
             return data
 
-    def _set_page_data(self, page: int, page_data: bytes):
+    def _set_page_data(self, page: int, page_data: bytes, f_sync=False):
         assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
         self._fd.seek(page_start)
-        write_to_file(self._fd, page_data)
+        write_to_file(self._fd, page_data, f_sync=f_sync)
 
     def set_meta_tree_conf(self, root_page: int, tree_conf: TreeConf):
         self._tree_conf = tree_conf
@@ -89,7 +89,7 @@ class FileHandler(object):
                 self._tree_conf.value_size.to_bytes(VALUE_LENGTH_LIMIT, ENDIAN) +
                 bytes(self._tree_conf.page_size - length)  # padding
         )
-        self._set_page_data(0, data)
+        self._set_page_data(0, data, f_sync=True)
 
     def get_meta_tree_conf(self) -> tuple:
         try:
@@ -137,6 +137,7 @@ class FileHandler(object):
         if self._uncommitted_pages:
             self._committed_pages.update(self._uncommitted_pages)
             self._uncommitted_pages.clear()
+        self.flush()
 
     def rollback(self):
         if self._uncommitted_pages:
@@ -144,10 +145,9 @@ class FileHandler(object):
 
     def flush(self):
         with self.write_lock:
-            for node_page, node in self._cache:
-                self._set_page_data(node_page, node.dump())
+            for node_page, node in self._cache.items():
+                self._set_page_data(node_page, node.dump(), f_sync=True)
             self._cache.clear()
-        self.commit()
 
     def close(self):
         self.flush()
