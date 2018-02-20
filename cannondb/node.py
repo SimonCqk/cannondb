@@ -152,7 +152,7 @@ class OverflowNode(BaseBNode):
         self.parent_page = parent_page
         self.next_page = next_page
         self.data = data
-        if data:
+        if data and (not parent_page):
             self.load(data)
 
     def load(self, data: bytes):
@@ -241,7 +241,7 @@ class BNode(BaseBNode):
         if self.next_page == 0:
             self.next_page = None
         else:
-            overflow_node = self.tree.handler.get_node(self.next_page)
+            overflow_node = self.tree.handler.get_node(self.next_page, tree=self.tree)
             assert isinstance(overflow_node, OverflowNode)
             data += overflow_node.get_complete_data()
         each_pair_len = KeyValPair(self.tree_conf).length

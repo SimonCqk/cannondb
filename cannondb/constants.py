@@ -12,7 +12,7 @@ PAGE_ADDRESS_FORMAT = '!I'
 PAGE_ADDRESS_LIMIT = 4
 
 # bytes for storing length of each page
-PAGE_LENGTH_LIMIT = 4
+PAGE_LENGTH_LIMIT = 3
 
 # bytes for storing key and value: unsigned short, big-endian, size=2
 # limit length of key under 64KB. [64KB = 2^16bit]
