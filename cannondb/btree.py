@@ -7,8 +7,8 @@ import rwlock
 
 from cannondb.constants import *
 from cannondb.node import BNode, BaseBNode, OverflowNode
-from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, file_flush_and_sync, \
-    EndOfFileError
+from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, \
+    file_flush_and_sync, EndOfFileError
 
 
 class FileHandler(object):
@@ -16,7 +16,7 @@ class FileHandler(object):
     Handling-layer between B tree engine and underlying db file
     """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_lock', 'last_page',
-                 '_committed_pages', '_uncommitted_pages')
+                 '_committed_pages', '_uncommitted_pages', '_page_GC')
 
     def __init__(self, file_name, tree_conf: TreeConf, cache_size=256):
         self._filename = file_name
@@ -35,6 +35,7 @@ class FileHandler(object):
         self.last_page = int(last_byte / self._tree_conf.page_size)
         self._committed_pages = dict()
         self._uncommitted_pages = dict()
+        self._page_GC = list()
 
     @property
     def write_lock(self):
@@ -89,6 +90,24 @@ class FileHandler(object):
         self._fd.seek(page_start)
         write_to_file(self._fd, page_data, f_sync=f_sync)
 
+    def _load_page_gc(self):
+        """load all deprecated pages used before"""
+        for offset in range(1, self.last_page):
+            page_start = offset * self._tree_conf.page_size
+            page_type = read_from_file(self._fd, page_start, page_start + NODE_TYPE_LENGTH_LIMIT)
+            if page_type == 2:  # _PageType.DEPRECATED_PAGE.value==2
+                self.collect_deprecated_page(offset)
+
+    def collect_deprecated_page(self, page: int):
+        """add new deprecated page to GC, smaller first"""
+        bisect.insort_left(self._page_GC, page)
+
+    def _takeout_deprecated_page(self):
+        """if GC has more than one page, take out smallest one"""
+        if self._page_GC:
+            return self._page_GC.pop(0)
+        return None
+
     def set_meta_tree_conf(self, root_page: int, tree_conf: TreeConf):
         """
         set current tree configuration into db file, recorded by first page.
@@ -130,8 +149,13 @@ class FileHandler(object):
 
     @property
     def next_available_page(self) -> int:
-        self.last_page += 1
-        return self.last_page
+        """try get one page from page GC (deprecated pages), else get by increase total pages"""
+        dep_page = self._takeout_deprecated_page()
+        if dep_page:
+            return dep_page
+        else:
+            self.last_page += 1
+            return self.last_page
 
     def set_node(self, node: Union[BNode, OverflowNode]):
         """
@@ -185,13 +209,13 @@ class BTree(object):
     __slots__ = ('_file_name', '_order', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
-    def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 24,
-                 value_size: int = 48, cache_size=128):
+    def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 16,
+                 value_size: int = 64, cache_size=128):
         self._file_name = file_name
         # adjust page size.
         # when (value_size + key_size + PAGE_ADDRESS_LIMIT) * order > page_size,
         # page may crash since it's capacity is not enough.
-        if (value_size + key_size + PAGE_ADDRESS_LIMIT) * order > page_size:
+        while (value_size + key_size + PAGE_ADDRESS_LIMIT) * order > page_size:
             page_size = pow(2, int(math.log2(page_size)) + 1)
         self._tree_conf = TreeConf(order=order, page_size=page_size,
                                    key_size=key_size, value_size=value_size)

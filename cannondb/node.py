@@ -169,10 +169,15 @@ class OverflowNode(BaseBNode):
         header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
         if len(self.data) + header_len > self.tree_conf.page_size:
             detach_start = self.tree_conf.page_size - header_len
-            self.next_page = self.tree.next_available_page
-            of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
-                              data=self.data[detach_start:])
-            of.flush()
+            if not self.next_page:
+                self.next_page = self.tree.next_available_page
+                of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
+                                  data=bytes(self.data[detach_start:]))
+                of.flush()
+            else:
+                of = self.tree.handler.get_node(self.next_page, tree=self.tree)
+                of.data = self.data[detach_start:]
+                of.flush()
             self.data = self.data[0:detach_start]
         next_page = 0 if self.next_page is None else self.next_page
         header = (
@@ -202,6 +207,18 @@ class OverflowNode(BaseBNode):
             return self.data + next_overflow.get_complete_data()
         else:
             return self.data
+
+    def set_as_deprecated(self):
+        if self.data:
+            self.data[0:NODE_TYPE_LENGTH_LIMIT] = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT,
+                                                                                           ENDIAN)
+
+        else:
+            of_data = self.dump()
+            of_data[0:NODE_TYPE_LENGTH_LIMIT] = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN)
+            self.data = of_data
+        self.flush()
+        self.tree.handler.collect_deprecated_page(self.page)
 
 
 class BNode(BaseBNode):
@@ -266,11 +283,17 @@ class BNode(BaseBNode):
         header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_SIZE_LIMIT + PAGE_ADDRESS_LIMIT
         if len(data) + header_len > self.tree_conf.page_size:  # overflow
             detach_start = self.tree_conf.page_size - header_len
-            self.next_page = self.tree.next_available_page
-            of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
-                              data=bytes(data[detach_start:]))
+            if not self.next_page:
+                self.next_page = self.tree.next_available_page
+                of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
+                                  data=bytes(data[detach_start:]))
+            else:
+                of = self.tree.handler.get_node(self.next_page, tree=self.tree)
+                of.data = data[detach_start:]
             of.flush()
             data = data[0:detach_start]
+        elif self.next_page:  # overflow before, but normal currently
+            pass
         next_page = 0 if self.next_page is None else self.next_page
         header = (
                 self.PAGE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
