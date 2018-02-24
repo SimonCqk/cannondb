@@ -110,7 +110,7 @@ class FileHandler(object):
         """
         set page as deprecated in db file
         :param dep_page: page to be set as deprecated
-        :param dep_page_data: only deprecated type as bytes is required.
+        :param dep_page_data: only deprecated type as bytes is required
         """
         if dep_page in self._cache:  # remove deprecated node in cache
             del self._cache[dep_page]
@@ -193,9 +193,8 @@ class FileHandler(object):
 
     def ensure_root_block(self, root: BNode):
         """sync root node information with both memory and disk"""
-        with self.write_lock:
-            self.set_node(root)
-            self.set_meta_tree_conf(root.page, root.tree_conf)
+        self.set_node(root)
+        self.set_meta_tree_conf(root.page, root.tree_conf)
 
     def commit(self):
         """sync uncommitted changes with db file"""
@@ -210,11 +209,10 @@ class FileHandler(object):
 
     def flush(self):
         """flush uncommitted changes to db file then clear the cache"""
-        with self.write_lock:
-            for node_page, node in self._cache.items():
-                self._write_page_data(node_page, node.dump())
-            file_flush_and_sync(self._fd)
-            self._cache.clear()
+        for node_page, node in self._cache.items():
+            self._write_page_data(node_page, node.dump())
+        file_flush_and_sync(self._fd)
+        self._cache.clear()
 
     def close(self):
         self.commit()
@@ -225,7 +223,7 @@ class BTree(object):
     __slots__ = ('_file_name', '_order', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
-    def __init__(self, file_name: str = 'database', order=100, page_size: int = 4096, key_size: int = 32,
+    def __init__(self, file_name: str = 'database', order=100, page_size: int = 4096, key_size: int = 16,
                  value_size: int = 64, cache_size=128):
         self._file_name = file_name
         self._tree_conf = TreeConf(order=order, page_size=page_size,
@@ -248,21 +246,22 @@ class BTree(object):
         get the path from root to node which contains key.
         :return: list of node-path from root to key-node.
         """
-        current = self._root
-        ancestry = []
+        with self.handler.read_lock:
+            current = self._root
+            ancestry = []
 
-        while getattr(current, 'children', None):
+            while getattr(current, 'children', None):
+                index = bisect.bisect_left(current.contents, key)
+                ancestry.append((current, index))
+                if index < len(current.contents) \
+                        and current.contents[index].key == key:
+                    return ancestry
+                current = self.handler.get_node(current.children[index], tree=self)
+
             index = bisect.bisect_left(current.contents, key)
             ancestry.append((current, index))
-            if index < len(current.contents) \
-                    and current.contents[index].key == key:
-                return ancestry
-            current = self.handler.get_node(current.children[index], tree=self)
 
-        index = bisect.bisect_left(current.contents, key)
-        ancestry.append((current, index))
-
-        return ancestry
+            return ancestry
 
     @staticmethod
     def _present(key, ancestors) -> bool:
@@ -281,19 +280,20 @@ class BTree(object):
         """
         ancestors = self._path_to(key)
         node, index = ancestors[-1]
-        if BTree._present(key, ancestors):
-            if not override:
-                raise ValueError('{key} has existed'.format(key=key))
+        with self.handler.write_lock:
+            if BTree._present(key, ancestors):
+                if not override:
+                    raise ValueError('{key} has existed'.format(key=key))
+                else:
+                    node.contents[index].value = value
+                    self.handler.set_node(node)
             else:
-                node.contents[index].value = value
-                self.handler.set_node(node)
-        else:
-            while getattr(node, 'children', None):
-                node = self.handler.get_node(node.children[index], tree=self)
-                index = bisect.bisect_left(node.contents, key)
-                ancestors.append((node, index))
-            node, index = ancestors.pop()
-            node.insert(index, key, value, ancestors)
+                while getattr(node, 'children', None):
+                    node = self.handler.get_node(node.children[index], tree=self)
+                    index = bisect.bisect_left(node.contents, key)
+                    ancestors.append((node, index))
+                node, index = ancestors.pop()
+                node.insert(index, key, value, ancestors)
 
     def multi_insert(self, pairs: Iterable, override=False):
         """
@@ -314,7 +314,8 @@ class BTree(object):
 
         if BTree._present(key, ancestors):
             node, index = ancestors.pop()
-            node.remove(index, ancestors)
+            with self.handler.write_lock:
+                node.remove(index, ancestors)
         else:
             raise KeyError('{key} not in {self}'.format(key=key, self=self.__class__.__name__))
 
@@ -379,8 +380,9 @@ class BTree(object):
                 for it in node.contents:
                     yield {it.key: it.value}
 
-        for item in _recurse(self._root):
-            yield item
+        with self.handler.read_lock:
+            for item in _recurse(self._root):
+                yield item
 
     def __repr__(self):
         def recurse(node, all_items, depth):
@@ -430,6 +432,7 @@ class BTree(object):
     def close(self):
         if self._closed:
             return
-        self.handler.ensure_root_block(self._root)
-        self.handler.close()
-        self._closed = True
+        with self.handler.write_lock:
+            self.handler.ensure_root_block(self._root)
+            self.handler.close()
+            self._closed = True
