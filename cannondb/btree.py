@@ -106,6 +106,17 @@ class FileHandler(object):
         """add new deprecated page to GC, smaller first"""
         bisect.insort_left(self._page_GC, page)
 
+    def set_deprecated_data(self, dep_page: int, dep_page_data: bytes):
+        """
+        set page as deprecated in db file
+        :param dep_page: page to be set as deprecated
+        :param dep_page_data: only deprecated type as bytes is required.
+        """
+        if dep_page in self._cache:  # remove deprecated node in cache
+            del self._cache[dep_page]
+        self._fd.seek(dep_page * self._tree_conf.page_size)
+        write_to_file(self._fd, dep_page_data)
+
     def _takeout_deprecated_page(self):
         """if GC has more than one page, take out smallest one"""
         if self._page_GC:

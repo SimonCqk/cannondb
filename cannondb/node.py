@@ -111,6 +111,7 @@ class BaseBNode(metaclass=ABCMeta):
 
     @classmethod
     def from_raw_data(cls, tree, tree_conf: TreeConf, page: int, data: bytes):
+        """construct node from raw data, corresponding to it's node type"""
         assert len(data) == tree_conf.page_size
         node_type = int.from_bytes(data[0:NODE_TYPE_LENGTH_LIMIT], ENDIAN)
         if node_type == 0:
@@ -123,6 +124,10 @@ class BaseBNode(metaclass=ABCMeta):
             raise TypeError('No such node type:{type} matched'.format(type=node_type))
 
     def _create_or_update_overflow(self, data: bytes, header_len: int) -> bytes:
+        """
+        if has created overflow page before, update it, else create new
+        :return: cropped origin-data
+        """
         detach_start = self.tree_conf.page_size - header_len
         if self.next_page:
             # has created new overflow page, update it.
@@ -164,7 +169,7 @@ class OverflowNode(BaseBNode):
         self.next_page = int.from_bytes(data[data_len_end:header_end], ENDIAN)
         if self.next_page == 0:
             self.next_page = None
-        self.overflow_data = data[header_end:header_end+data_len]
+        self.overflow_data = data[header_end:header_end + data_len]
 
     def dump(self) -> bytes:
         data = bytearray()
@@ -197,7 +202,7 @@ class OverflowNode(BaseBNode):
 
     def get_complete_data(self) -> bytes:
         """
-        There may more than one overflow page, merge all overflow overflow_data and return it to parent,
+        There may more than one overflow page, merge all overflow data and return it to parent,
         [BNode or OverflowNode]
         """
         if self.next_page:
@@ -208,19 +213,15 @@ class OverflowNode(BaseBNode):
             return self.overflow_data
 
     def set_as_deprecated(self):
-        """TODO: fix bugs """
-        print('#######################')
-        if self.overflow_data:
-            new_type = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN)
-            self.overflow_data = new_type + self.overflow_data[NODE_TYPE_LENGTH_LIMIT:]
-        else:
-            of_data = bytearray(self.dump())
-            of_data[0:NODE_TYPE_LENGTH_LIMIT] = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN)
-            self.overflow_data = bytes(of_data)
-            if self.next_page:
-                self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
-                self.next_page = None
-        self.flush()
+        """
+        length of overflow data is now under page size, set pages after this in overflow-pages-chain
+        as deprecated.
+        """
+        new_type_as_bytes = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN)
+        if self.next_page:
+            self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
+            self.next_page = None
+        self.tree.handler.set_deprectaed_data(self.page, new_type_as_bytes)
         self.tree.handler.collect_deprecated_page(self.page)
 
 
@@ -291,7 +292,7 @@ class BNode(BaseBNode):
         elif len(data) + header_len <= self.tree_conf.page_size and self.next_page:
             # overflow before, but normal currently
             self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
-            self.next_page = None
+            self.next_page = None  # critical!
         next_page = 0 if self.next_page is None else self.next_page
         header = (
                 self.PAGE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
