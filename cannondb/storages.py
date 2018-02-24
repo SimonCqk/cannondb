@@ -18,10 +18,10 @@ class MemoryStorage(object):
     """
     __slots__ = ('_memory', '_lock')
 
-    def __init__(self, *, multi_process=False):
+    def __init__(self, *, m_process=False):
         super(MemoryStorage, self).__init__()
         self._memory = dict()
-        self._lock = threading.Lock() if not multi_process else multiprocessing.Lock()
+        self._lock = threading.Lock() if not m_process else multiprocessing.Lock()
 
     def insert(self, key, value, override=False):
         with self._lock:
@@ -39,6 +39,15 @@ class MemoryStorage(object):
 
     def get(self, key, default=None):
         return self._memory.get(key, default=default)
+
+    def keys(self):
+        return self._memory.keys()
+
+    def values(self):
+        return self._memory.values()
+
+    def items(self):
+        return self._memory.items()
 
     def close(self):
         self._memory.clear()
