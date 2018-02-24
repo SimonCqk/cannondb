@@ -209,7 +209,11 @@ class FileHandler(object):
 
     def flush(self):
         """flush uncommitted changes to db file then clear the cache"""
-        for node_page, node in self._cache.items():
+        rest = [(node_page, node)
+                for (node_page, node) in self._cache.items()]
+        # can not just iterate self._cache, because during iterating,
+        # cache will do refresh and size of cache changed at run time.
+        for node_page, node in rest:
             self._write_page_data(node_page, node.dump())
         file_flush_and_sync(self._fd)
         self._cache.clear()
@@ -231,13 +235,16 @@ class BTree(object):
         self.handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
         self._order = order
         try:  # create new root or load previous root
-            meta_root_page, meta_tree_conf = self.handler.get_meta_tree_conf()
+            with self.handler.read_lock:
+                meta_root_page, meta_tree_conf = self.handler.get_meta_tree_conf()
         except ValueError:
             #  init empty tree
-            self._root = self._bottom = self.LEAF(self, self._tree_conf)
-            self.handler.ensure_root_block(self._root)
+            with self.handler.write_lock:
+                self._root = self._bottom = self.LEAF(self, self._tree_conf)
+                self.handler.ensure_root_block(self._root)
         else:
-            self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
+            with self.handler.read_lock:
+                self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 
         self._closed = False
 

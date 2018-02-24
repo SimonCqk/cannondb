@@ -221,7 +221,7 @@ class OverflowNode(BaseBNode):
         if self.next_page:
             self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
             self.next_page = None
-        self.tree.handler.set_deprectaed_data(self.page, new_type_as_bytes)
+        self.tree.handler.set_deprecated_data(self.page, new_type_as_bytes)
         self.tree.handler.collect_deprecated_page(self.page)
 
 
