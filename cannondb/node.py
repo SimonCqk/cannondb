@@ -1,4 +1,5 @@
 import enum
+import functools
 import struct
 from abc import ABCMeta, abstractmethod
 
@@ -6,6 +7,7 @@ from cannondb.constants import *
 from cannondb.serializer import serializer_switcher, type_switcher
 
 
+@functools.total_ordering
 class KeyValPair(metaclass=ABCMeta):
     """
     Unit stores a pair of key-value, switch its serializer automatically by its type.
@@ -33,7 +35,7 @@ class KeyValPair(metaclass=ABCMeta):
 
         assert 0 <= key_len <= self.tree_conf.key_size
 
-        key_end = KEY_LENGTH_LIMIT + key_len
+        key_end = key_len_end + key_len
         key_type_start = key_len_end + self.tree_conf.key_size
         key_type_end = key_type_start + SERIALIZER_TYPE_LENGTH_LIMIT
         self.key_ser = serializer_switcher(type_switcher(int.from_bytes(data[key_type_start:key_type_end], ENDIAN)))
@@ -82,24 +84,6 @@ class KeyValPair(metaclass=ABCMeta):
         else:
             return self.key < other
 
-    def __le__(self, other):
-        if isinstance(other, KeyValPair):
-            return self.key <= other.key
-        else:
-            return self.key <= other
-
-    def __gt__(self, other):
-        if isinstance(other, KeyValPair):
-            return self.key > other.key
-        else:
-            return self.key > other
-
-    def __ge__(self, other):
-        if isinstance(other, KeyValPair):
-            return self.key >= other.key
-        else:
-            return self.key >= other
-
     def __str__(self):
         return '<{key}:{val}>'.format(key=self.key, val=self.value)
 
@@ -113,12 +97,11 @@ class _PageType(enum.Enum):
 
 
 class BaseBNode(metaclass=ABCMeta):
-    __slots__ = ()
     PAGE_TYPE = None
 
     @abstractmethod
     def load(self, data: bytes):
-        """create node from raw data"""
+        """create node from raw overflow_data"""
         pass
 
     @abstractmethod
@@ -128,20 +111,36 @@ class BaseBNode(metaclass=ABCMeta):
 
     @classmethod
     def from_raw_data(cls, tree, tree_conf: TreeConf, page: int, data: bytes):
+        assert len(data) == tree_conf.page_size
         node_type = int.from_bytes(data[0:NODE_TYPE_LENGTH_LIMIT], ENDIAN)
         if node_type == 0:
             return BNode(tree, tree_conf, page=page, data=data)
         elif node_type == 1:
             return OverflowNode(tree, tree_conf, page=page, data=data)
+        elif node_type == 2:
+            raise TypeError('Deprecated pages can only be used by pages-GC.')
         else:
             raise TypeError('No such node type:{type} matched'.format(type=node_type))
+
+    def _create_or_update_overflow(self, data: bytes, header_len: int) -> bytes:
+        detach_start = self.tree_conf.page_size - header_len
+        if self.next_page:
+            # has created new overflow page, update it.
+            of = self.tree.handler.get_node(self.next_page, tree=self.tree)
+        else:
+            # create new overflow page
+            self.next_page = self.tree.next_available_page
+            of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page)
+        of.overflow_data = data[detach_start:]
+        of.flush()
+        return data[0:detach_start]
 
 
 class OverflowNode(BaseBNode):
     """
-    Recording overflow pages' information and raw data
+    Recording overflow pages' information and raw overflow_data
     """
-    __slots__ = ('tree', 'tree_conf', 'page', 'parent_page', 'next_page', 'data')
+    __slots__ = ('tree', 'tree_conf', 'page', 'parent_page', 'next_page', 'overflow_data')
     PAGE_TYPE = _PageType.OVERFLOW_PAGE
 
     def __init__(self, tree, tree_conf: TreeConf, page: int, parent_page: int = None, next_page: int = None,
@@ -151,78 +150,82 @@ class OverflowNode(BaseBNode):
         self.page = page
         self.parent_page = parent_page
         self.next_page = next_page
-        self.data = data
-        if data and (not parent_page):
+        self.overflow_data = None
+        if data:
             self.load(data)
 
     def load(self, data: bytes):
         assert len(data) == self.tree_conf.page_size
+        node_type = int.from_bytes(data[0:NODE_TYPE_LENGTH_LIMIT], ENDIAN)
+        assert node_type == self.PAGE_TYPE.value
         data_len_end = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT
         data_len = int.from_bytes(data[NODE_TYPE_LENGTH_LIMIT:data_len_end], ENDIAN)
         header_end = data_len_end + PAGE_ADDRESS_LIMIT
         self.next_page = int.from_bytes(data[data_len_end:header_end], ENDIAN)
         if self.next_page == 0:
             self.next_page = None
-        self.data = data[header_end:data_len]
+        self.overflow_data = data[header_end:header_end+data_len]
 
     def dump(self) -> bytes:
+        data = bytearray()
         header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
-        if len(self.data) + header_len > self.tree_conf.page_size:
-            detach_start = self.tree_conf.page_size - header_len
-            if not self.next_page:
-                self.next_page = self.tree.next_available_page
-                of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
-                                  data=bytes(self.data[detach_start:]))
-                of.flush()
-            else:
-                of = self.tree.handler.get_node(self.next_page, tree=self.tree)
-                of.data = self.data[detach_start:]
-                of.flush()
-            self.data = self.data[0:detach_start]
+        if len(self.overflow_data) + header_len > self.tree_conf.page_size:  # overflow
+            self.overflow_data = self._create_or_update_overflow(self.overflow_data, header_len)
+            assert len(self.overflow_data) == self.tree_conf.page_size - header_len
+        elif len(self.overflow_data) + header_len <= self.tree_conf.page_size and self.next_page:
+            # overflow before, but normal currently
+            self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
+            self.next_page = None
+        data.extend(self.overflow_data)
         next_page = 0 if self.next_page is None else self.next_page
         header = (
                 self.PAGE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
-                len(self.data).to_bytes(PAGE_LENGTH_LIMIT, ENDIAN) +
+                len(self.overflow_data).to_bytes(PAGE_LENGTH_LIMIT, ENDIAN) +
                 next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
         )
-        padding = self.tree_conf.page_size - header_len - len(self.data)
-        assert 0 <= padding
-        return header + self.data + bytes(padding)
+        data = bytearray(header) + data
+        if len(data) < self.tree_conf.page_size:
+            padding = bytearray(self.tree_conf.page_size - len(data))
+            data.extend(padding)
+        return bytes(data)
 
     def flush(self):
         """
-        hard write overflow data into file
+        write overflow overflow_data into file
         """
-        if self.data:
-            self.tree.handler.set_node(self)
+        self.tree.handler.set_node(self)
 
-    def get_complete_data(self):
+    def get_complete_data(self) -> bytes:
         """
-        There may not only one overflow page, merge all overflow data and return it to parent,
+        There may more than one overflow page, merge all overflow overflow_data and return it to parent,
         [BNode or OverflowNode]
         """
         if self.next_page:
             next_overflow = self.tree.handler.get_node(self.next_page, tree=self.tree)
             assert isinstance(next_overflow, OverflowNode)
-            return self.data + next_overflow.get_complete_data()
+            return self.overflow_data + next_overflow.get_complete_data()
         else:
-            return self.data
+            return self.overflow_data
 
     def set_as_deprecated(self):
-        if self.data:
-            self.data[0:NODE_TYPE_LENGTH_LIMIT] = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT,
-                                                                                           ENDIAN)
-
+        """TODO: fix bugs """
+        print('#######################')
+        if self.overflow_data:
+            new_type = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN)
+            self.overflow_data = new_type + self.overflow_data[NODE_TYPE_LENGTH_LIMIT:]
         else:
-            of_data = self.dump()
+            of_data = bytearray(self.dump())
             of_data[0:NODE_TYPE_LENGTH_LIMIT] = _PageType.DEPRECATED_PAGE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN)
-            self.data = of_data
+            self.overflow_data = bytes(of_data)
+            if self.next_page:
+                self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
+                self.next_page = None
         self.flush()
         self.tree.handler.collect_deprecated_page(self.page)
 
 
 class BNode(BaseBNode):
-    __slots__ = ('tree', 'contents', 'children', 'tree_conf', 'page', 'next_page', 'data')
+    __slots__ = ('tree', 'contents', 'children', 'tree_conf', 'page', 'next_page', 'overflow_data')
     PAGE_TYPE = _PageType.NORMAL_PAGE
 
     def __init__(self, tree, tree_conf: TreeConf, contents: list = None, children: list = None, page: int = None,
@@ -237,7 +240,7 @@ class BNode(BaseBNode):
             self.load(data)
         if self.children:
             assert len(self.contents) + 1 == len(self.children), \
-                'One more child than data item required'
+                'One more child than overflow_data item required'
 
     def __repr__(self):
         name = 'Branch' if getattr(self, 'children', None) else 'Leaf'
@@ -261,6 +264,7 @@ class BNode(BaseBNode):
             overflow_node = self.tree.handler.get_node(self.next_page, tree=self.tree)
             assert isinstance(overflow_node, OverflowNode)
             data += overflow_node.get_complete_data()
+            # assert len(data) == header_end + pairs_len + children_len
         each_pair_len = KeyValPair(self.tree_conf).length
         pairs_end = header_end + pairs_len
         for off_set in range(header_end, pairs_end, each_pair_len):
@@ -282,18 +286,12 @@ class BNode(BaseBNode):
 
         header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_SIZE_LIMIT + PAGE_ADDRESS_LIMIT
         if len(data) + header_len > self.tree_conf.page_size:  # overflow
-            detach_start = self.tree_conf.page_size - header_len
-            if not self.next_page:
-                self.next_page = self.tree.next_available_page
-                of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page,
-                                  data=bytes(data[detach_start:]))
-            else:
-                of = self.tree.handler.get_node(self.next_page, tree=self.tree)
-                of.data = data[detach_start:]
-            of.flush()
-            data = data[0:detach_start]
-        elif self.next_page:  # overflow before, but normal currently
-            pass
+            data = bytearray(self._create_or_update_overflow(bytes(data), header_len))
+            assert len(data) == self.tree_conf.page_size - header_len
+        elif len(data) + header_len <= self.tree_conf.page_size and self.next_page:
+            # overflow before, but normal currently
+            self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
+            self.next_page = None
         next_page = 0 if self.next_page is None else self.next_page
         header = (
                 self.PAGE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +

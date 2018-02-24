@@ -5,9 +5,9 @@ tree = BTree(test_file_name)
 
 
 def test_normal_insert():
-    tree.insert('a', 1)
-    tree.insert('b', 2)
-    tree.insert('c', 3)
+    tree.insert('a', 1, override=True)
+    tree.insert('b', 2, override=True)
+    tree.insert('c', 3, override=True)
     assert tree['a'] == 1
     assert tree['c'] == 3
 
@@ -22,10 +22,7 @@ def test_scale_insert():
 
 
 def test_iter_self():
-    iter_items = []
-    for item in tree:
-        iter_items.append(item)
-    assert len(iter_items) == 10003
+    iter_items = [i for i in tree]
 
 
 def test_insert_float():
@@ -44,8 +41,9 @@ def test_insert_dict():
 
 
 if __name__ == '__main__':
-    # test_normal_insert()
-    # test_scale_insert()
+    test_normal_insert()
+    test_scale_insert()
     # test_iter_self()
     test_insert_float()
     test_insert_dict()
+    tree.close()

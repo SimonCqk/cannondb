@@ -11,6 +11,10 @@ from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_fi
     file_flush_and_sync, EndOfFileError
 
 
+class DBNotOpenError(Exception):
+    """raise when trying to do ops but storage was closed"""
+
+
 class FileHandler(object):
     """
     Handling-layer between B tree engine and underlying db file
@@ -35,7 +39,7 @@ class FileHandler(object):
         self.last_page = int(last_byte / self._tree_conf.page_size)
         self._committed_pages = dict()
         self._uncommitted_pages = dict()
-        self._page_GC = list()
+        self._page_GC = list(self._load_page_gc())
 
     @property
     def write_lock(self):
@@ -69,22 +73,22 @@ class FileHandler(object):
 
     def _read_page_data(self, page: int) -> bytes:
         """
-        read No.page data from db file
+        read No.page overflow_data from db file
         """
         page_start = page * self._tree_conf.page_size
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
         if data == b'':
-            raise EndOfFileError('Page index out of range or page data noe set yet')
+            raise EndOfFileError('Page index out of range or page overflow_data noe set yet')
         else:
             return data
 
     def _write_page_data(self, page: int, page_data: bytes, f_sync=False):
         """
-        write page data to position No.page in db file, call system sync if specified f_sync,
+        write page overflow_data to position No.page in db file, call system sync if specified f_sync,
         but sync is an expensive operation.
         """
-        assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
+        assert len(page_data) == self._tree_conf.page_size, 'length of page overflow_data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
         self._fd.seek(page_start)
@@ -96,7 +100,7 @@ class FileHandler(object):
             page_start = offset * self._tree_conf.page_size
             page_type = read_from_file(self._fd, page_start, page_start + NODE_TYPE_LENGTH_LIMIT)
             if page_type == 2:  # _PageType.DEPRECATED_PAGE.value==2
-                self.collect_deprecated_page(offset)
+                yield offset
 
     def collect_deprecated_page(self, page: int):
         """add new deprecated page to GC, smaller first"""
@@ -132,7 +136,7 @@ class FileHandler(object):
         try:
             data = self._read_page_data(0)
         except EndOfFileError:
-            raise ValueError('Meta tree configure data has not set yet')
+            raise ValueError('Meta tree configure overflow_data has not set yet')
         root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
         order_end = PAGE_ADDRESS_LIMIT + 1
         order = int.from_bytes(data[PAGE_ADDRESS_LIMIT:order_end], ENDIAN)
@@ -159,7 +163,7 @@ class FileHandler(object):
 
     def set_node(self, node: Union[BNode, OverflowNode]):
         """
-        add & update node data into db file and also add to cache
+        add & update node overflow_data into db file and also add to cache
         """
         self._write_page_data(node.page, node.dump())
         self._cache[node.page] = node
@@ -178,8 +182,9 @@ class FileHandler(object):
 
     def ensure_root_block(self, root: BNode):
         """sync root node information with both memory and disk"""
-        self.set_node(root)
-        self.set_meta_tree_conf(root.page, root.tree_conf)
+        with self.write_lock:
+            self.set_node(root)
+            self.set_meta_tree_conf(root.page, root.tree_conf)
 
     def commit(self):
         """sync uncommitted changes with db file"""
@@ -209,26 +214,19 @@ class BTree(object):
     __slots__ = ('_file_name', '_order', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
-    def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 16,
+    def __init__(self, file_name: str = 'database', order=100, page_size: int = 4096, key_size: int = 16,
                  value_size: int = 64, cache_size=128):
         self._file_name = file_name
-        # adjust page size.
-        # when (value_size + key_size + PAGE_ADDRESS_LIMIT) * order > page_size,
-        # page may crash since it's capacity is not enough.
-        while (value_size + key_size + PAGE_ADDRESS_LIMIT) * order > page_size:
-            page_size = pow(2, int(math.log2(page_size)) + 1)
         self._tree_conf = TreeConf(order=order, page_size=page_size,
                                    key_size=key_size, value_size=value_size)
         self.handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
         self._order = order
-        # create new root or load previous root
-        try:
+        try:  # create new root or load previous root
             meta_root_page, meta_tree_conf = self.handler.get_meta_tree_conf()
         except ValueError:
             #  init empty tree
             self._root = self._bottom = self.LEAF(self, self._tree_conf)
-            with self.handler.write_lock:
-                self.handler.ensure_root_block(self._root)
+            self.handler.ensure_root_block(self._root)
         else:
             self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 

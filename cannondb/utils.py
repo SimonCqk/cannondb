@@ -23,7 +23,7 @@ def open_database_file(file_name, suffix='.cdb'):
 
 def file_flush_and_sync(f: io.FileIO):
     """
-    call system sync, ensure write the file’s data to disk, but it's a EXPENSIVE op
+    call system sync, ensure write the file’s overflow_data to disk, but it's a EXPENSIVE op
     """
     f.flush()
     os.fsync(f.fileno())
@@ -112,11 +112,11 @@ class LRUCache(dict):
         del self.lru[:]
 
 
-class FakeCache:
+class FakeCache(dict):
     """A cache that doesn't cache anything."""
 
-    def get(self, k):
-        pass
+    def get(self, k, d=None):
+        return None
 
     def __setitem__(self, key, value):
         pass
