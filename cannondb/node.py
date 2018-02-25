@@ -12,7 +12,7 @@ class KeyValPair(metaclass=ABCMeta):
     """
     Unit stores a pair of key-value, switch its serializer automatically by its type.
     """
-    __slots__ = ('key', 'value', 'length', 'tree_conf', 'key_ser', 'val_ser')
+    __slots__ = ('key', 'value', 'length', 'tree_conf', 'key_ser', 'val_ser', '_dumped')
 
     def __init__(self, tree_conf: TreeConf, key=None, value=None, data: bytes = None):
         self.tree_conf = tree_conf
@@ -25,8 +25,8 @@ class KeyValPair(metaclass=ABCMeta):
             self.key_ser = serializer_switcher(type(key))
             self.val_ser = serializer_switcher(type(value))
         if data:
-            assert len(data) == self.length
             self.load(data)
+        self._dumped = None
 
     def load(self, data: bytes):
         assert len(data) == self.length
@@ -53,7 +53,9 @@ class KeyValPair(metaclass=ABCMeta):
         self.value = self.val_ser.deserialize(data[val_len_end:val_end])
 
     def dump(self) -> bytes:
-        assert self.key is not None and self.value is not None
+        # assert self.key is not None and self.value is not None
+        if self._dumped:
+            return self._dumped
         key_as_bytes = self.key_ser.serialize(self.key)
         key_len = len(key_as_bytes)
         key_type_as_bytes = type_switcher(type(self.key)).to_bytes(SERIALIZER_TYPE_LENGTH_LIMIT, ENDIAN)
@@ -70,6 +72,7 @@ class KeyValPair(metaclass=ABCMeta):
                 bytes(self.tree_conf.value_size - val_len) +
                 val_type_as_bytes
         )
+        self._dumped = data
         return data
 
     def __eq__(self, other):
@@ -112,7 +115,7 @@ class BaseBNode(metaclass=ABCMeta):
     @classmethod
     def from_raw_data(cls, tree, tree_conf: TreeConf, page: int, data: bytes):
         """construct node from raw data, corresponding to it's node type"""
-        assert len(data) == tree_conf.page_size
+        # assert len(data) == tree_conf.page_size
         node_type = int.from_bytes(data[0:NODE_TYPE_LENGTH_LIMIT], ENDIAN)
         if node_type == 0:
             return BNode(tree, tree_conf, page=page, data=data)
@@ -161,7 +164,7 @@ class OverflowNode(BaseBNode):
         self._dumped = None  # internal dump-cache. Re-dump every time is extremely expensive.
 
     def load(self, data: bytes):
-        assert len(data) == self.tree_conf.page_size
+        # assert len(data) == self.tree_conf.page_size
         node_type = int.from_bytes(data[0:NODE_TYPE_LENGTH_LIMIT], ENDIAN)
         assert node_type == self.PAGE_TYPE.value
         data_len_end = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT
@@ -205,6 +208,10 @@ class OverflowNode(BaseBNode):
         self.tree.handler.set_node(self)
 
     def update_overflow_data(self, new_overflow):
+        """
+        update overflow data, if it has dumped before, update the dumped data
+        to avoid re-dump next time. Dump is time-consuming.
+        """
         self.overflow_data = new_overflow
         if self._dumped:  # sync-updating dumped data
             header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
@@ -231,7 +238,7 @@ class OverflowNode(BaseBNode):
         """
         if self.next_page:
             next_overflow = self.tree.handler.get_node(self.next_page, tree=self.tree)
-            assert isinstance(next_overflow, OverflowNode)
+            # assert isinstance(next_overflow, OverflowNode)
             return self.overflow_data + next_overflow.get_complete_data()
         else:
             return self.overflow_data
@@ -288,9 +295,8 @@ class BNode(BaseBNode):
             self.next_page = None
         else:
             overflow_node = self.tree.handler.get_node(self.next_page, tree=self.tree)
-            assert isinstance(overflow_node, OverflowNode)
+            # assert isinstance(overflow_node, OverflowNode)
             data += overflow_node.get_complete_data()
-            # assert len(data) == header_end + pairs_len + children_len
         each_pair_len = KeyValPair(self.tree_conf).length
         pairs_end = header_end + pairs_len
         for off_set in range(header_end, pairs_end, each_pair_len):
