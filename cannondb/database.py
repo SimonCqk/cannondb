@@ -11,8 +11,8 @@ class CannonDB(with_metaclass(ABCMeta)):
     """   """
     DEFAULT_STORAGE = FileStorage
 
-    def __init__(self, file_name: str = 'database', cache_size: int = 128, *, order=100, page_size=4096, key_size=32,
-                 value_size=64, file_cache=128, **kwargs):
+    def __init__(self, file_name: str = 'database', cache_size: int = 128, *, order=100, page_size=8192, key_size=16,
+                 value_size=64, file_cache=256, **kwargs):
         """
         :param file_name: database file name (only used by file storage)
         :param cache_size: cache

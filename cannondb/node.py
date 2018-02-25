@@ -136,7 +136,7 @@ class BaseBNode(metaclass=ABCMeta):
             # create new overflow page
             self.next_page = self.tree.next_available_page
             of = OverflowNode(tree=self.tree, tree_conf=self.tree_conf, page=self.next_page, parent_page=self.page)
-        of.overflow_data = data[detach_start:]
+        of.update_overflow_data(data[detach_start:])
         of.flush()
         return data[0:detach_start]
 
@@ -145,7 +145,7 @@ class OverflowNode(BaseBNode):
     """
     Recording overflow pages' information and raw overflow_data
     """
-    __slots__ = ('tree', 'tree_conf', 'page', 'parent_page', 'next_page', 'overflow_data')
+    __slots__ = ('tree', 'tree_conf', 'page', 'parent_page', 'next_page', 'overflow_data', '_dumped')
     PAGE_TYPE = _PageType.OVERFLOW_PAGE
 
     def __init__(self, tree, tree_conf: TreeConf, page: int, parent_page: int = None, next_page: int = None,
@@ -158,6 +158,7 @@ class OverflowNode(BaseBNode):
         self.overflow_data = None
         if data:
             self.load(data)
+        self._dumped = None  # internal dump-cache. Re-dump every time is extremely expensive.
 
     def load(self, data: bytes):
         assert len(data) == self.tree_conf.page_size
@@ -172,6 +173,8 @@ class OverflowNode(BaseBNode):
         self.overflow_data = data[header_end:header_end + data_len]
 
     def dump(self) -> bytes:
+        if self._dumped:
+            return bytes(self._dumped)
         data = bytearray()
         header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
         if len(self.overflow_data) + header_len > self.tree_conf.page_size:  # overflow
@@ -192,13 +195,34 @@ class OverflowNode(BaseBNode):
         if len(data) < self.tree_conf.page_size:
             padding = bytearray(self.tree_conf.page_size - len(data))
             data.extend(padding)
-        return bytes(data)
+        self._dumped = data
+        return bytes(self._dumped)
 
     def flush(self):
         """
         write overflow overflow_data into file
         """
         self.tree.handler.set_node(self)
+
+    def update_overflow_data(self, new_overflow):
+        self.overflow_data = new_overflow
+        if self._dumped:  # sync-updating dumped data
+            header_len = NODE_TYPE_LENGTH_LIMIT + PAGE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+            if len(self.overflow_data) + header_len > self.tree_conf.page_size:  # overflow
+                self.overflow_data = self._create_or_update_overflow(self.overflow_data, header_len)
+                assert len(self.overflow_data) == self.tree_conf.page_size - header_len
+            elif len(self.overflow_data) + header_len <= self.tree_conf.page_size and self.next_page:
+                # overflow before, but normal currently
+                self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
+                self.next_page = None
+            of_len_start = NODE_TYPE_LENGTH_LIMIT
+            of_len_end = of_len_start + PAGE_LENGTH_LIMIT
+            self._dumped[of_len_start:of_len_end] = len(self.overflow_data).to_bytes(PAGE_LENGTH_LIMIT, ENDIAN)
+            self._dumped[header_len:] = self.overflow_data
+            if len(self._dumped) < self.tree_conf.page_size:
+                padding = bytearray(self.tree_conf.page_size - len(self._dumped))
+                self._dumped.extend(padding)
+            assert len(self._dumped) == self.tree_conf.page_size
 
     def get_complete_data(self) -> bytes:
         """
@@ -239,6 +263,7 @@ class BNode(BaseBNode):
         self.next_page = next_page
         if data:
             self.load(data)
+        self._dumped = None  # internal dump-cache. Re-dump every time is extremely expensive.
         if self.children:
             assert len(self.contents) + 1 == len(self.children), \
                 'One more child than overflow_data item required'
@@ -277,6 +302,8 @@ class BNode(BaseBNode):
             self.children.append(int.from_bytes(data[off_set:(off_set + PAGE_ADDRESS_LIMIT)], ENDIAN))
 
     def dump(self) -> bytes:
+        if self._dumped:
+            return self._dumped
         data = bytearray()
         for pair in self.contents:
             data.extend(pair.dump())
@@ -304,7 +331,26 @@ class BNode(BaseBNode):
         if len(data) < self.tree_conf.page_size:
             padding = bytearray(self.tree_conf.page_size - len(data))
             data.extend(padding)
-        return bytes(data)
+        self._dumped = bytes(data)
+        return self._dumped
+
+    def _append_content_in_dump(self):
+        pass
+
+    def _update_content_in_dump(self):
+        pass
+
+    def _insert_content_in_dump(self):
+        pass
+
+    def _append_child_in_dump(self):
+        pass
+
+    def _update_child_in_dump(self):
+        pass
+
+    def _insert_child_in_dump(self):
+        pass
 
     def lateral(self, parent, parent_index, target, target_index):
         """
