@@ -73,19 +73,15 @@ class KeyValPair(metaclass=ABCMeta):
                 val_type_as_bytes
         )
         self._dumped = data
-        return data
+        return self._dumped
 
     def __eq__(self, other):
         if isinstance(other, KeyValPair):
-            return self.key == other.key
-        else:
-            return self.key == other
+            return self.key == other.key and self.value == self.value
+        return self.key == other
 
     def __lt__(self, other):
-        if isinstance(other, KeyValPair):
-            return self.key < other.key
-        else:
-            return self.key < other
+        return self.key < other
 
     def __str__(self):
         return '<{key}:{val}>'.format(key=self.key, val=self.value)
@@ -207,7 +203,7 @@ class OverflowNode(BaseBNode):
         """
         self.tree.handler.set_node(self)
 
-    def update_overflow_data(self, new_overflow):
+    def update_overflow_data(self, new_overflow: bytes):
         """
         update overflow data, if it has dumped before, update the dumped data
         to avoid re-dump next time. Dump is time-consuming.
@@ -285,9 +281,9 @@ class BNode(BaseBNode):
 
     def load(self, data: bytes):
         assert len(data) == self.tree_conf.page_size
-        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_SIZE_LIMIT
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_LENGTH_LIMIT
         pairs_len = int.from_bytes(data[NODE_TYPE_LENGTH_LIMIT:pairs_len_end], ENDIAN)
-        children_len_end = pairs_len_end + NODE_CONTENTS_SIZE_LIMIT
+        children_len_end = pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT
         children_len = int.from_bytes(data[pairs_len_end:children_len_end], ENDIAN)
         header_end = children_len_end + PAGE_ADDRESS_LIMIT
         self.next_page = int.from_bytes(data[children_len_end:header_end], ENDIAN)
@@ -309,7 +305,7 @@ class BNode(BaseBNode):
 
     def dump(self) -> bytes:
         if self._dumped:
-            return self._dumped
+            return bytes(self._dumped)
         data = bytearray()
         for pair in self.contents:
             data.extend(pair.dump())
@@ -317,46 +313,148 @@ class BNode(BaseBNode):
         for ch in self.children:
             data.extend(ch.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN))
         children_len = len(data) - pairs_len
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        self._adjust_overflow_chain(data, header_len)
 
-        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_SIZE_LIMIT + PAGE_ADDRESS_LIMIT
-        if len(data) + header_len > self.tree_conf.page_size:  # overflow
-            data = bytearray(self._create_or_update_overflow(bytes(data), header_len))
-            assert len(data) == self.tree_conf.page_size - header_len
-        elif len(data) + header_len <= self.tree_conf.page_size and self.next_page:
-            # overflow before, but normal currently
-            self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
-            self.next_page = None  # critical!
         next_page = 0 if self.next_page is None else self.next_page
         header = (
                 self.PAGE_TYPE.value.to_bytes(NODE_TYPE_LENGTH_LIMIT, ENDIAN) +
-                pairs_len.to_bytes(NODE_CONTENTS_SIZE_LIMIT, ENDIAN) +
-                children_len.to_bytes(NODE_CONTENTS_SIZE_LIMIT, ENDIAN) +
+                pairs_len.to_bytes(NODE_CONTENTS_LENGTH_LIMIT, ENDIAN) +
+                children_len.to_bytes(NODE_CONTENTS_LENGTH_LIMIT, ENDIAN) +
                 next_page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
         )
         data = bytearray(header) + data
         if len(data) < self.tree_conf.page_size:
             padding = bytearray(self.tree_conf.page_size - len(data))
             data.extend(padding)
-        self._dumped = bytes(data)
+        self._dumped = data
         return self._dumped
 
-    def _append_content_in_dump(self):
-        pass
+    def _adjust_overflow_chain(self, data: bytearray, header_len: int):
+        if len(data) + header_len > self.tree_conf.page_size:  # overflow
+            data[:] = self._create_or_update_overflow(bytes(data), header_len)
+            assert len(data) == self.tree_conf.page_size - header_len
+        elif len(data) + header_len <= self.tree_conf.page_size and self.next_page:
+            # overflow before, but normal currently
+            self.tree.handler.get_node(self.next_page, tree=self.tree).set_as_deprecated()
+            self.next_page = None  # critical!
 
-    def _update_content_in_dump(self):
-        pass
+    # methods for sync data in internal dumped data with append/insert/update/pop ops
 
-    def _insert_content_in_dump(self):
-        pass
+    def _update_content_in_dump(self, index: int, pair: KeyValPair):
+        assert index < len(self.contents)
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        each_pair_len = KeyValPair(self.tree_conf).length
+        target_start = header_len + each_pair_len * index
+        self._dumped[target_start:target_start + each_pair_len] = pair.dump()
+        self._adjust_overflow_chain(self._dumped[header_len:], header_len)
 
-    def _append_child_in_dump(self):
-        pass
+    def _insert_content_in_dump(self, index: int, pair: KeyValPair):
+        assert index < len(self.contents)
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        header = self._dumped[0:header_len]
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_LENGTH_LIMIT
+        pairs_len = int.from_bytes(bytes(header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end]), ENDIAN)
+        children_len = int.from_bytes(
+            bytes(header[pairs_len_end:pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT]), ENDIAN)
+        orig = self._dumped[header_len:header_len + pairs_len + children_len]  # origin concrete data
+        each_pair_len = KeyValPair(self.tree_conf).length
+        target_start = each_pair_len * index
+        orig[target_start:target_start] = pair.dump()  # insert at pos: target start
+        pairs_len += each_pair_len  # update new pairs length
+        # update new pairs length in header
+        header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end] = pairs_len.to_bytes(NODE_CONTENTS_LENGTH_LIMIT, ENDIAN)
 
-    def _update_child_in_dump(self):
-        pass
+        self._adjust_overflow_chain(orig, header_len)
 
-    def _insert_child_in_dump(self):
-        pass
+        self._dumped = header + orig
+        if len(self._dumped) < self.tree_conf.page_size:
+            padding = bytearray(self.tree_conf.page_size - len(self._dumped))
+            self._dumped.extend(padding)
+        assert len(self._dumped) == self.tree_conf.page_size
+
+    def _pop_content_in_dump(self, index: int):
+        assert index < len(self.contents)
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        header = self._dumped[0:header_len]
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_LENGTH_LIMIT
+        pairs_len = int.from_bytes(bytes(header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end]), ENDIAN)
+        children_len = int.from_bytes(
+            bytes(header[pairs_len_end:pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT]), ENDIAN)
+        orig = self._dumped[header_len:header_len + pairs_len + children_len]  # origin concrete data
+        each_pair_len = KeyValPair(self.tree_conf).length
+        target_start = each_pair_len * index
+        orig[target_start:target_start + each_pair_len] = b''  # remove target pair in dumped data at pos: target start
+        pairs_len -= each_pair_len  # update new pairs length
+        # update new pairs length in header
+        header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end] = pairs_len.to_bytes(NODE_CONTENTS_LENGTH_LIMIT, ENDIAN)
+
+        self._adjust_overflow_chain(orig, header_len)
+
+        self._dumped = header + orig
+        if len(self._dumped) < self.tree_conf.page_size:
+            padding = bytearray(self.tree_conf.page_size - len(self._dumped))
+            self._dumped.extend(padding)
+        assert len(self._dumped) == self.tree_conf.page_size
+
+    def _update_child_in_dump(self, index: int, child: int):
+        assert index < len(self.children)
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        header = self._dumped[0:header_len]
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_LENGTH_LIMIT
+        pairs_len = int.from_bytes(bytes(header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end]), ENDIAN)
+        target_start = header_len + pairs_len + index * PAGE_ADDRESS_LIMIT
+        self._dumped[target_start:target_start + PAGE_ADDRESS_LIMIT] = child.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)
+        self._adjust_overflow_chain(self._dumped[header_len:], header_len)
+
+    def _insert_child_in_dump(self, index: int, child: int):
+        assert index < len(self.children)
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        header = self._dumped[0:header_len]
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_LENGTH_LIMIT
+        pairs_len = int.from_bytes(bytes(header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end]), ENDIAN)
+        children_len = int.from_bytes(
+            bytes(header[pairs_len_end:pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT]), ENDIAN)
+        orig = self._dumped[header_len:header_len + pairs_len + children_len]  # origin concrete data
+        target_start = pairs_len + index * PAGE_ADDRESS_LIMIT
+        orig[target_start:target_start] = child.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN)  # insert at pos: target start
+        children_len += PAGE_ADDRESS_LIMIT  # update new pairs length
+        # update new children length in header
+        header[pairs_len_end:pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT] = children_len.to_bytes(
+            NODE_CONTENTS_LENGTH_LIMIT,
+            ENDIAN)
+
+        self._adjust_overflow_chain(orig, header_len)
+
+        self._dumped = header + orig
+        if len(self._dumped) < self.tree_conf.page_size:
+            padding = bytearray(self.tree_conf.page_size - len(self._dumped))
+            self._dumped.extend(padding)
+        assert len(self._dumped) == self.tree_conf.page_size
+
+    def _pop_child_in_dump(self, index: int):
+        assert index < len(self.children)
+        header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
+        header = self._dumped[0:header_len]
+        pairs_len_end = NODE_TYPE_LENGTH_LIMIT + NODE_CONTENTS_LENGTH_LIMIT
+        pairs_len = int.from_bytes(bytes(header[NODE_TYPE_LENGTH_LIMIT:pairs_len_end]), ENDIAN)
+        children_len = int.from_bytes(
+            bytes(header[pairs_len_end:pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT]), ENDIAN)
+        orig = self._dumped[header_len:header_len + pairs_len + children_len]  # origin concrete data
+        target_start = pairs_len + index * PAGE_ADDRESS_LIMIT
+        orig[target_start:target_start + PAGE_ADDRESS_LIMIT] = b''  # remove at pos: target start
+        children_len -= PAGE_ADDRESS_LIMIT  # update new pairs length
+        # update new children length in header
+        header[pairs_len_end:pairs_len_end + NODE_CONTENTS_LENGTH_LIMIT] = children_len.to_bytes(
+            NODE_CONTENTS_LENGTH_LIMIT, ENDIAN)
+
+        self._adjust_overflow_chain(orig, header_len)
+
+        self._dumped = header + orig
+        if len(self._dumped) < self.tree_conf.page_size:
+            padding = bytearray(self.tree_conf.page_size - len(self._dumped))
+            self._dumped.extend(padding)
+        assert len(self._dumped) == self.tree_conf.page_size
 
     def lateral(self, parent, parent_index, target, target_index):
         """
