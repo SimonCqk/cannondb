@@ -1,2 +1,7 @@
-# CannonDB
-`CannonDB` is a tiny but powerful database designed for human beings. It is maintained by a on-disk B-tree underlying, so fast-responsing I/O operations are provided.
+![logo](https://github.com/SimonCqk/cannondb/blob/master/logo/cannon.jpg?raw=true)
+
+CannonDB
+========
+
+**`CannonDB` is a lightweight but powerful key-value database designed for human beings.** 
+
