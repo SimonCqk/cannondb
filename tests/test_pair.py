@@ -16,13 +16,13 @@ def test_normal():
     # print(as_bytes)
     data = read_from_file(f, 0, len(as_bytes))
     after = KeyValPair(tree_conf, data=data)
-    print('key=', after.key)
-    print('value=', after.value)
+    print('_key=', after._key)
+    print('_value=', after._value)
     del after
     after = KeyValPair(tree_conf)
     after.load(data)
-    print('key=', after.key)
-    print('value=', after.value)
+    print('_key=', after._key)
+    print('_value=', after._value)
 
 
 def test_dict_value():
@@ -31,13 +31,13 @@ def test_dict_value():
     assert len(as_bytes) == orig.length
     # print(as_bytes)
     after = KeyValPair(tree_conf, data=as_bytes)
-    print('key=', after.key)
-    print('value=', after.value)
+    print('_key=', after._key)
+    print('_value=', after._value)
     del after
     after = KeyValPair(tree_conf)
     after.load(as_bytes)
-    print('key=', after.key)
-    print('value=', after.value)
+    print('_key=', after._key)
+    print('_value=', after._value)
 
 
 def test_float_value():
@@ -46,13 +46,13 @@ def test_float_value():
     assert len(as_bytes) == orig.length
     # print(as_bytes)
     after = KeyValPair(tree_conf, data=as_bytes)
-    print('key=', after.key)
-    print('value=', after.value)
+    print('_key=', after._key)
+    print('_value=', after._value)
     del after
     after = KeyValPair(tree_conf)
     after.load(as_bytes)
-    print('key=', after.key)
-    print('value=', after.value)
+    print('_key=', after._key)
+    print('_value=', after._value)
 
 
 if __name__ == '__main__':

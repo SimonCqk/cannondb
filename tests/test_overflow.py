@@ -1,10 +1,12 @@
+import time
+
 from cannondb.btree import BTree
 
 file_name = 'test_overflow'
 tree = BTree(file_name, 3, 32, 8, 12, cache_size=0)
 
 """
-tree config set as: order=3, page size=32, key size=8, value size=12
+tree config set as: order=3, page size=32, _key size=8, _value size=12
 root node raw overflow_data should be:b'\x00\x00T\x00\x00\x00\x00\x00\x02\x00\x041234
 \x00\x00\x00\x00\x02\x00\x00\x00\x04\x00\x00\x04\xd2\x00\x00\x00\x00\x00\x00
 \x00\x00\x00\x00\x044567\x00\x00\x00\x00\x02\x00\x00\x00\x04\x00\x00\x11\xd7
@@ -18,7 +20,13 @@ def test_overflow():
     tree.insert('1234', 1234, override=True)
     tree.insert('4567', 4567, override=True)
     tree.insert('6789', 6789, override=True)
+    assert tree['1234'] == 1234
+    assert tree['4567'] == 4567
+    assert tree['6789'] == 6789
 
 
 if __name__ == '__main__':
+    start = time.time()
     test_overflow()
+    end = time.time()
+    print('time:', end - start)
