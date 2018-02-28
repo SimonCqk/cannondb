@@ -88,7 +88,7 @@ class FileHandler(object):
         write page overflow_data to position No.page in db file, call system sync if specified f_sync,
         but sync is an expensive operation.
         """
-        assert len(page_data) == self._tree_conf.page_size, 'length of page overflow_data does not match page size'
+        assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
         self._uncommitted_pages[page] = page_start
         self._fd.seek(page_start)
@@ -99,7 +99,7 @@ class FileHandler(object):
         for offset in range(1, self.last_page):
             page_start = offset * self._tree_conf.page_size
             page_type = read_from_file(self._fd, page_start, page_start + NODE_TYPE_LENGTH_LIMIT)
-            if page_type == 2:  # _PageType.DEPRECATED_PAGE.value==2
+            if page_type == 2:  # _PageType.DEPRECATED_PAGE._value==2
                 yield offset
 
     def collect_deprecated_page(self, page: int):
@@ -250,8 +250,8 @@ class BTree(object):
 
     def _path_to(self, key):
         """
-        get the path from root to node which contains key.
-        :return: list of node-path from root to key-node.
+        get the path from root to node which contains _key.
+        :return: list of node-path from root to _key-node.
         """
         with self.handler.read_lock:
             current = self._root
@@ -273,17 +273,17 @@ class BTree(object):
     @staticmethod
     def _present(key, ancestors) -> bool:
         """
-        judge is key exist in this tree.
+        judge is _key exist in this tree.
         """
         last, index = ancestors[-1]
         return index < len(last.contents) and last.contents[index].key == key
 
     def insert(self, key, value, override=False):
         """
-        :param key: key to be inserted
-        :param value: value to be inserted corresponding to the key
-        :param override: if override is true and key has existed, the new
-                         value will override the old one.
+        :param key: _key to be inserted
+        :param value: _value to be inserted corresponding to the _key
+        :param override: if override is true and _key has existed, the new
+                         _value will override the old one.
         """
         ancestors = self._path_to(key)
         node, index = ancestors[-1]
@@ -293,6 +293,7 @@ class BTree(object):
                     raise ValueError('{key} has existed'.format(key=key))
                 else:
                     node.contents[index].value = value
+                    node.update_content_in_dump(index, node.contents[index])
                     self.handler.set_node(node)
             else:
                 while getattr(node, 'children', None):
@@ -304,12 +305,12 @@ class BTree(object):
 
     def multi_insert(self, pairs: Iterable, override=False):
         """
-        insert a batch of key-value pair at one time.
+        insert a batch of _key-_value pair at one time.
         """
         if not isinstance(pairs, Iterable):
             raise TypeError('pairs should be a iterable object')
         elif isinstance(pairs, (tuple, list, set)):
-            sorted(pairs, key=lambda it: it[0])  # sort by key
+            sorted(pairs, key=lambda it: it[0])  # sort by _key
             for key, value in pairs:
                 self.insert(key, value, override)
         elif isinstance(pairs, dict):
@@ -337,9 +338,9 @@ class BTree(object):
 
     def get(self, key, default=None):
         """
-        :param key: key expected to be searched in the tree.
-        :param default: if key doesn't exist, return default.
-        :return: value corresponding to the key if key exists.
+        :param key: _key expected to be searched in the tree.
+        :param default: if _key doesn't exist, return default.
+        :return: _value corresponding to the _key if _key exists.
         """
         try:
             return next(self._get(key))
@@ -372,7 +373,7 @@ class BTree(object):
 
     def __iter__(self):
         """
-        support iterate B tree by yielding a key-value pair each time
+        support iterate B tree by yielding a _key-_value pair each time
         """
 
         def _recurse(node):

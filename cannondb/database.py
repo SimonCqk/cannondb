@@ -18,8 +18,8 @@ class CannonDB(with_metaclass(ABCMeta)):
         :param cache_size: cache
         :param order: order setting of underlying B tree (only used by file storage)
         :param page_size: maximum page size in each file, file is split into pages. (only used by file storage)
-        :param key_size: maximum key size limitation (only used by file storage)
-        :param value_size: maximum value size limitation (only used by file storage)
+        :param key_size: maximum _key size limitation (only used by file storage)
+        :param value_size: maximum _value size limitation (only used by file storage)
         :param file_cache: LRU cache size (only used by file storage)
         :param kwargs: to specify storage type: storage='file' or storage='memory'
                                   multi-process lock open: m_process=True (only used by memory storage)

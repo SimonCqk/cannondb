@@ -76,7 +76,7 @@ class LRUCache(dict):
 
     def refresh(self, key):
         """
-        Push a key to the tail of the LRU queue
+        Push a _key to the tail of the LRU queue
         """
         if key in self.lru:
             self.lru.remove(key)

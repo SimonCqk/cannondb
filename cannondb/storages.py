@@ -14,7 +14,7 @@ FileStorage = BTree
 
 class MemoryStorage(object):
     """
-    Store key-value pairs just in memory.
+    Store _key-_value pairs just in memory.
     """
     __slots__ = ('_memory', '_lock')
 

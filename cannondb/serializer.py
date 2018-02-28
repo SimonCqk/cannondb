@@ -15,12 +15,12 @@ class Serializer(metaclass=ABCMeta):
 
     @staticmethod
     def serialize(obj: object) -> bytes:
-        """Serialize a key to bytes."""
+        """Serialize a _key to bytes."""
         raise NotImplementedError
 
     @staticmethod
     def deserialize(data: bytes) -> object:
-        """Create a key object from bytes."""
+        """Create a _key object from bytes."""
         raise NotImplementedError
 
     def __repr__(self):
