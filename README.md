@@ -19,17 +19,17 @@ CannonDB
 ```python
 import cannondb
 # create by call <connect> function
-db=cannondb.connect()
+db = cannondb.connect()
 
 # create by instantiate a CannonDB class
 
-db=cannondb.CannonDB()
+db = cannondb.CannonDB()
 ```
 
 ##### insert key value pairs
 ```python
 import cannondb
-db=cannondb.connect()
+db = cannondb.connect()
 
 # kinds of type-combination as your pleasant
 db.insert('1234',4321)

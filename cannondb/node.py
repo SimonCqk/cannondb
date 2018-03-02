@@ -80,8 +80,8 @@ class KeyValPair(metaclass=ABCMeta):
         return self._key
 
     @key.setter
-    def key(self, value):
-        self._key = value
+    def key(self, new_key):
+        self._key = new_key
         if self._dumped:
             key_as_bytes = self.key_ser.serialize(self._key)
             key_len = len(key_as_bytes)
@@ -94,8 +94,8 @@ class KeyValPair(metaclass=ABCMeta):
         return self._value
 
     @value.setter
-    def value(self, val):
-        self._value = val
+    def value(self, new_val):
+        self._value = new_val
         if self._dumped:
             val_as_bytes = self.val_ser.serialize(self._value)
             val_len = len(val_as_bytes)
@@ -436,7 +436,7 @@ class BNode(BaseBNode):
             assert len(self._dumped) == self.tree_conf.page_size
 
     def pop_content_in_dump(self, index: int):
-        assert index < len(self.contents)
+        assert index <= len(self.contents)
         if self._dumped:
             header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
             header = self._dumped[0:header_len]
@@ -520,7 +520,7 @@ class BNode(BaseBNode):
             assert len(self._dumped) == self.tree_conf.page_size
 
     def pop_child_in_dump(self, index: int):
-        assert index < len(self.children)
+        assert index <= len(self.children)
         if self._dumped:
             header_len = NODE_TYPE_LENGTH_LIMIT + 2 * NODE_CONTENTS_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
             header = self._dumped[0:header_len]
@@ -579,6 +579,7 @@ class BNode(BaseBNode):
                 self.pop_child_in_dump(len(self.children))
                 target.insert_child_in_dump(0, child_to_pop)
         # update nodes inside handler
+        self.tree.handler.set_node(self)
         self.tree.handler.set_node(parent)
         self.tree.handler.set_node(target)
 

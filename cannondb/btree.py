@@ -13,6 +13,7 @@ from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_fi
 
 class DBNotOpenError(Exception):
     """raise when trying to do ops but storage was closed"""
+    pass
 
 
 class FileHandler(object):
@@ -42,8 +43,8 @@ class FileHandler(object):
         self._page_GC = list(self._load_page_gc())
 
     @property
-    def write_lock(self):
-        class WriteLock:
+    def write_transaction(self):
+        class WriteTransaction:
             def __enter__(_self):
                 self._lock.writer_lock.acquire()
 
@@ -55,18 +56,18 @@ class FileHandler(object):
                     pass
                 self._lock.writer_lock.release()
 
-        return WriteLock()
+        return WriteTransaction()
 
     @property
-    def read_lock(self):
-        class ReadLock:
+    def read_transaction(self):
+        class ReadTransaction:
             def __enter__(_self):
                 self._lock.reader_lock.acquire()
 
             def __exit__(_self, exc_type, exc_val, exc_tb):
                 self._lock.reader_lock.release()
 
-        return ReadLock()
+        return ReadTransaction()
 
     def _fd_seek_end(self):
         self._fd.seek(0, io.SEEK_END)
@@ -201,7 +202,6 @@ class FileHandler(object):
         if self._uncommitted_pages:
             self._committed_pages.update(self._uncommitted_pages)
             self._uncommitted_pages.clear()
-        self.flush()
 
     def rollback(self):
         if self._uncommitted_pages:
@@ -213,13 +213,15 @@ class FileHandler(object):
                 for (node_page, node) in self._cache.items()]
         # can not just iterate self._cache, because during iterating,
         # cache will do refresh and size of cache changed at run time.
-        for node_page, node in rest:
-            self._write_page_data(node_page, node.dump())
-        file_flush_and_sync(self._fd)
-        self._cache.clear()
+        with self.write_transaction:
+            for node_page, node in rest:
+                self._write_page_data(node_page, node.dump())
+            file_flush_and_sync(self._fd)
+            self._cache.clear()
+            self.commit()
 
     def close(self):
-        self.commit()
+        self.flush()
         self._fd.close()
 
 
@@ -235,15 +237,15 @@ class BTree(object):
         self.handler = FileHandler(file_name, self._tree_conf, cache_size=cache_size)
         self._order = order
         try:  # create new root or load previous root
-            with self.handler.read_lock:
+            with self.handler.read_transaction:
                 meta_root_page, meta_tree_conf = self.handler.get_meta_tree_conf()
         except ValueError:
             #  init empty tree
-            with self.handler.write_lock:
+            with self.handler.write_transaction:
                 self._root = self._bottom = self.LEAF(self, self._tree_conf)
                 self.handler.ensure_root_block(self._root)
         else:
-            with self.handler.read_lock:
+            with self.handler.read_transaction:
                 self._root, self._tree_conf = self.handler.get_node(meta_root_page, tree=self), meta_tree_conf
 
         self._closed = False
@@ -253,7 +255,7 @@ class BTree(object):
         get the path from root to node which contains _key.
         :return: list of node-path from root to _key-node.
         """
-        with self.handler.read_lock:
+        with self.handler.read_transaction:
             current = self._root
             ancestry = []
 
@@ -287,7 +289,7 @@ class BTree(object):
         """
         ancestors = self._path_to(key)
         node, index = ancestors[-1]
-        with self.handler.write_lock:
+        with self.handler.write_transaction:
             if BTree._present(key, ancestors):
                 if not override:
                     raise ValueError('{key} has existed'.format(key=key))
@@ -322,7 +324,7 @@ class BTree(object):
 
         if BTree._present(key, ancestors):
             node, index = ancestors.pop()
-            with self.handler.write_lock:
+            with self.handler.write_transaction:
                 node.remove(index, ancestors)
         else:
             raise KeyError('{key} not in {self}'.format(key=key, self=self.__class__.__name__))
@@ -338,9 +340,9 @@ class BTree(object):
 
     def get(self, key, default=None):
         """
-        :param key: _key expected to be searched in the tree.
-        :param default: if _key doesn't exist, return default.
-        :return: _value corresponding to the _key if _key exists.
+        :param key: key expected to be searched in the tree.
+        :param default: if key doesn't exist, return default.
+        :return: _value corresponding to the key if key exists.
         """
         try:
             return next(self._get(key))
@@ -352,12 +354,12 @@ class BTree(object):
             yield item
 
     def _iterkeys(self):
-        for key, _ in self:
-            yield key
+        for pair in self:
+            yield pair[0]
 
     def _itervalues(self):
-        for _, value in self:
-            yield value
+        for pair in self:
+            yield pair[1]
 
     def keys(self) -> list:
         return list(self._iterkeys())
@@ -367,6 +369,12 @@ class BTree(object):
 
     def items(self) -> list:
         return list(self._iteritems())
+
+    def commit(self):
+        self.handler.commit()
+
+    def flush(self):
+        self.handler.flush()
 
     def __contains__(self, key):
         return BTree._present(key, self._path_to(key))
@@ -381,14 +389,14 @@ class BTree(object):
                 for child, it in zip(node.children, node.contents):
                     for child_item in _recurse(self.handler.get_node(child, tree=self)):
                         yield child_item
-                    yield {it.key: it.value}
+                    yield it.key, it.value
                 for child_item in _recurse(self.handler.get_node(node.children[-1], tree=self)):
                     yield child_item
             else:
                 for it in node.contents:
-                    yield {it.key: it.value}
+                    yield it.key, it.value
 
-        with self.handler.read_lock:
+        with self.handler.read_transaction:
             for item in _recurse(self._root):
                 yield item
 
@@ -440,7 +448,7 @@ class BTree(object):
     def close(self):
         if self._closed:
             return
-        with self.handler.write_lock:
+        with self.handler.write_transaction:
             self.handler.ensure_root_block(self._root)
             self.handler.close()
             self._closed = True

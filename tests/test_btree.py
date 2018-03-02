@@ -1,6 +1,3 @@
-import profile
-import pstats
-
 from cannondb.btree import BTree
 
 test_file_name = 'tmp_tree'
@@ -16,12 +13,13 @@ def test_normal_insert():
 
 
 def test_scale_insert():
-    for i in range(500000, 510000):
+    for i in range(0, 10000):
         tree.insert(str(i), i, override=True)
+    tree.flush()
 
 
 def test_range_get():
-    for i in range(500000, 510000):
+    for i in range(0, 10000):
         assert tree[str(i)] == i
 
 
@@ -46,9 +44,12 @@ def test_insert_dict():
 
 if __name__ == '__main__':
     # test_normal_insert()
+    '''
     profile.run('test_scale_insert()', 'result.txt')
     p = pstats.Stats("result.txt")
     p.sort_stats("time").print_stats()
+    '''
+    test_range_get()
     # test_iter_self()
     # test_insert_float()
     # test_insert_dict()
