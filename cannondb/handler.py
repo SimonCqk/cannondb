@@ -20,7 +20,7 @@ class FileHandler(object):
     Handling-layer between B tree engine and underlying db file
     """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_wal', '_lock',
-                 'last_page', '_page_GC')
+                 'last_page', '_page_GC','auto_commit')
 
     def __init__(self, file_name, tree_conf: TreeConf, cache_size=256):
         self._filename = file_name
@@ -39,6 +39,7 @@ class FileHandler(object):
         last_byte = self._fd.tell()
         self.last_page = int(last_byte / self._tree_conf.page_size)
         self._page_GC = list(self._load_page_gc())
+        self.auto_commit=True
 
     @property
     def write_transaction(self):
@@ -51,7 +52,8 @@ class FileHandler(object):
                     self._cache.clear()
                     self._wal.rollback()
                 else:
-                    self._wal.commit()
+                    if self.auto_commit:
+                        self._wal.commit()
                 self._lock.writer_lock.release()
 
         return WriteTransaction()

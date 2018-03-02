@@ -212,6 +212,13 @@ class BTree(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    def checkpoint(self):
+        """manually perform checkpoint"""
+        self.handler.perform_checkpoint(reopen_wal=True)
+
+    def set_auto_commit(self, auto: bool):
+        self.handler.auto_commit = auto
+
     @property
     def next_available_page(self) -> int:
         return self.handler.next_available_page

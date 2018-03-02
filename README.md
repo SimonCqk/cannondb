@@ -11,7 +11,7 @@ CannonDB
 - str/int/float/dict types of key/value are supported.
 - storage data in file defaulted, but storage in memory is also supported. 
 - flexible parameter (db name/ page size/ key size/ value size /cache size) configuration to satisfy your demand.
-
+- use WAL(write-logging ahead) tech to avoid losing uncommitted data when emergency happens.
 ### How to use
 
 ##### create a db instance
@@ -66,5 +66,4 @@ del db['pi']
 ### TODO
 
 - refactor all I/O operations into `async` model.
-- complete WAL part
 - complete wrappers to enhance functions of database.
