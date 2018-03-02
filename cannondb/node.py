@@ -625,7 +625,7 @@ class BNode(BaseBNode):
         self.tree.handler.set_node(sibling)  # IMPORTANT!
         if len(parent.contents) > parent.tree.order:
             parent.shrink(ancestors)
-        self.tree.handler.set_node(self)
+        self.tree.handler.set_node(self)  # IMPORTANT!
 
     def split(self):
         """
