@@ -1,5 +1,4 @@
-import profile
-import pstats
+import time
 
 from cannondb.btree import BTree
 
@@ -47,13 +46,17 @@ def test_insert_dict():
 
 if __name__ == '__main__':
     # test_normal_insert()
-
+    '''
     profile.run('test_scale_insert()', 'result.txt')
     p = pstats.Stats("result.txt")
     p.sort_stats("time").print_stats()
+    '''
+    start = time.time()
+    # test_scale_insert()
 
-    #test_scale_insert()
-    #test_range_get()
+    test_range_get()
+    end = time.time()
+    print(end - start)
     # test_iter_self()
     # test_insert_float()
     # test_insert_dict()

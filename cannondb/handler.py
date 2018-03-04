@@ -9,7 +9,7 @@ import rwlock
 
 from cannondb.constants import *
 from cannondb.node import BNode, BaseBNode, OverflowNode
-from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, \
+from cannondb.utils import LRUCache, open_database_file, read_from_file, write_to_file, \
     file_flush_and_sync, EndOfFileError
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,7 @@ class FileHandler(object):
         self._filename = file_name
         self._tree_conf = tree_conf
 
-        if cache_size == 0:
-            self._cache = FakeCache()
-        elif cache_size < 0:
+        if cache_size <= 0:
             self._cache = LRUCache()  # cache without size limitation
         else:
             self._cache = LRUCache(capacity=cache_size)

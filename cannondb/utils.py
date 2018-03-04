@@ -112,19 +112,6 @@ class LRUCache(dict):
         del self.lru[:]
 
 
-class FakeCache(dict):
-    """A cache that doesn't cache anything."""
-
-    def get(self, k, d=None):
-        return None
-
-    def __setitem__(self, key, value):
-        pass
-
-    def clear(self):
-        pass
-
-
 def with_metaclass(meta, *bases):
     """
     Function from jinja2/_compat.py. License: BSD.
