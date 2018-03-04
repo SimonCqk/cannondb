@@ -1,4 +1,5 @@
 import bisect
+import logging
 import math
 from typing import Iterable
 
@@ -6,6 +7,7 @@ from cannondb.constants import TreeConf
 from cannondb.handler import FileHandler
 from cannondb.node import BNode
 
+logger=logging.getLogger(__name__)
 
 class DBNotOpenError(Exception):
     """raise when trying to do ops but storage was closed"""
@@ -214,7 +216,8 @@ class BTree(object):
         self.handler.perform_checkpoint(reopen_wal=True)
 
     def set_auto_commit(self, auto: bool):
-        self.handler.auto_commit = auto
+        logging.info('Set database auto commit {state}.'.format(state='on' if auto else 'off'))
+        self.handler._auto_commit = auto
 
     @property
     def next_available_page(self) -> int:
@@ -243,4 +246,5 @@ class BTree(object):
             self.handler.ensure_root_block(self._root)
             self._closed = True
         self.handler.close()
+        logging.info('Database has been closed.')
 

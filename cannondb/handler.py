@@ -20,7 +20,7 @@ class FileHandler(object):
     Handling-layer between B tree engine and underlying db file
     """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_wal', '_lock',
-                 'last_page', '_page_GC', 'auto_commit')
+                 'last_page', '_page_GC', '_auto_commit')
 
     def __init__(self, file_name, tree_conf: TreeConf, cache_size=1024):
         self._filename = file_name
@@ -41,7 +41,7 @@ class FileHandler(object):
         last_byte = self._fd.tell()
         self.last_page = int(last_byte / self._tree_conf.page_size)
         self._page_GC = list(self._load_page_gc())
-        self.auto_commit = True
+        self._auto_commit = True
 
     @property
     def write_transaction(self):
@@ -57,7 +57,7 @@ class FileHandler(object):
                     self._wal.rollback()
                     self._cache.clear()
                 else:
-                    if self.auto_commit:
+                    if self._auto_commit:
                         self._wal.commit()
                 self._lock.writer_lock.release()
 
@@ -116,8 +116,7 @@ class FileHandler(object):
         """
         if dep_page in self._cache:  # remove deprecated node in cache
             del self._cache[dep_page]
-        self._fd.seek(dep_page * self._tree_conf.page_size)
-        write_to_file(self._fd, dep_page_data)
+        self._wal.set_page_deprecated(dep_page, dep_page_data)
 
     def _takeout_deprecated_page(self):
         """if GC has more than one page, take out smallest one"""
@@ -211,6 +210,7 @@ class FileHandler(object):
         """sync root node information with both memory and disk"""
         self.set_node(root)
         self.set_meta_tree_conf(root.page, root.tree_conf)
+        self.commit()
 
     def commit(self):
         """sync uncommitted changes with db file"""
@@ -220,7 +220,7 @@ class FileHandler(object):
         self._wal.rollback()
 
     def flush(self):
-        """flush uncommitted changes to db file then clear the cache"""
+        """flush uncommitted changes to db file and clear the cache"""
         # can not just iterate cache, because during iterating,
         # cache will do refresh and size of cache changed at run time.
         with self.write_transaction:
@@ -269,6 +269,7 @@ class WAL:
     def checkpoint(self):
         """Transfer the modified data back to the tree and close the WAL."""
         if self._not_committed_pages:
+            print(len(self._not_committed_pages))
             logger.warning('Closing WAL with uncommitted data, discarding it')
 
         file_flush_and_sync(self._fd)
@@ -290,6 +291,7 @@ class WAL:
         write_to_file(self._fd, data, f_sync=True)
 
     def _load_wal(self):
+        """load previous WAL generated when B Tree closed accidentally."""
         self._fd.seek(0)
         header_data = read_from_file(self._fd, 0, PAGE_LENGTH_LIMIT)
         assert int.from_bytes(header_data, ENDIAN) == self._page_size
@@ -348,7 +350,7 @@ class WAL:
         )
 
         if page in self._committed_pages.keys() and frame_type == FrameType.PAGE:
-            # if page has wrote before, overwrite it, or the size of .wal file will boom.
+            # if page has wrote into WAL before, overwrite it, or the size of .wal file will boom.
             page_start = self._committed_pages[page]
             seek_start = page_start - FRAME_TYPE_LENGTH_LIMIT - PAGE_ADDRESS_LIMIT
             self._fd.seek(seek_start)
@@ -356,6 +358,14 @@ class WAL:
             self._fd.seek(0, io.SEEK_END)
         write_to_file(self._fd, data, f_sync=frame_type != FrameType.PAGE)
         self._index_frame(frame_type, page, self._fd.tell() - self._page_size)
+
+    def set_page_deprecated(self, dep_page: int, dep_page_data: bytes):
+        assert dep_page in self._committed_pages.keys(), 'page to be set as deprecated not found.'
+        page_start = self._committed_pages[dep_page]
+        seek_start = page_start - FRAME_TYPE_LENGTH_LIMIT - PAGE_ADDRESS_LIMIT
+        self._fd.seek(seek_start)
+        write_to_file(self._fd, dep_page_data)
+        del self._committed_pages[dep_page]
 
     def get_page(self, page: int) -> bytes:
         page_start = None
