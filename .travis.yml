@@ -5,8 +5,6 @@ sudo: false
 python:
   - "3.6"
   - "3.5"
-script:
-    - pycodestyle cannondb
 
 before_install: pip install rwlock
 
