@@ -8,7 +8,7 @@ from cannondb.utils import with_metaclass, LRUCache
 
 
 class CannonDB(with_metaclass(ABCMeta)):
-    """   """
+    """main interface of database"""
     DEFAULT_STORAGE = FileStorage
 
     def __init__(self, file_name: str = 'database', cache_size: int = 256, *, order=100, page_size=8192, key_size=16,
@@ -56,6 +56,16 @@ class CannonDB(with_metaclass(ABCMeta)):
             return self._cache[key]
         return self._storage.get(key, default)
 
+    def checkpoint(self):
+        """manually perform checkpoint"""
+        self._storage.checkpoint()
+
+    def commit(self):
+        self._storage.commit()
+
+    def set_auto_commit(self, auto: bool):
+        self._storage.set_auto_commit(auto)
+
     def close(self):
         self._storage.close()
         self._closed = True
@@ -66,7 +76,7 @@ class CannonDB(with_metaclass(ABCMeta)):
 
     @property
     def size(self):
-        return len([_ for _ in self._storage])
+        return len(self._storage)
 
     def __contains__(self, item):
         return self._storage.__contains__(item)
@@ -81,9 +91,7 @@ class CannonDB(with_metaclass(ABCMeta)):
         return self._storage.__enter__()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.is_open:
-            self._closed = True
-        return self._storage.__exit__(exc_type, exc_val, exc_tb)
+        return self.close()
 
     def __setitem__(self, key, value):
         self.insert(key, value, override=True)

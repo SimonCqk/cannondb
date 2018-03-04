@@ -34,7 +34,7 @@ class FileHandler(object):
         self._lock = rwlock.RWLock()
         self._wal = WAL(file_name, tree_conf.page_size)
 
-        # Get the next available page
+        # Get the last available page
         self._fd.seek(0, io.SEEK_END)
         last_byte = self._fd.tell()
         self.last_page = int(last_byte / self._tree_conf.page_size)
@@ -163,12 +163,13 @@ class FileHandler(object):
         return root_page, self._tree_conf
 
     def perform_checkpoint(self, reopen_wal=False):
-        logger.info('Performing checkpoint of {name}'.format(name=self._filename))
-        for page, page_data in self._wal.checkpoint():
-            self._write_page_data(page, page_data, f_sync=False)
-        file_flush_and_sync(self._fd)
-        if reopen_wal:
-            self._wal = WAL(self._filename, self._tree_conf.page_size)
+        with self.write_transaction:
+            logger.info('Performing checkpoint of {name}'.format(name=self._filename))
+            for page, page_data in self._wal.checkpoint():
+                self._write_page_data(page, page_data, f_sync=False)
+            file_flush_and_sync(self._fd)
+            if reopen_wal:
+                self._wal = WAL(self._filename, self._tree_conf.page_size)
 
     @property
     def next_available_page(self) -> int:

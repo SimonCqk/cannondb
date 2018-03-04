@@ -49,5 +49,14 @@ class MemoryStorage(object):
     def items(self):
         return self._memory.items()
 
+    def checkpoint(self):
+        pass
+
+    def commit(self):
+        pass
+
+    def set_auto_commit(self, auto: bool):
+        pass
+
     def close(self):
         self._memory.clear()
