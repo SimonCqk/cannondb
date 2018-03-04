@@ -22,12 +22,14 @@ class FileHandler(object):
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_wal', '_lock',
                  'last_page', '_page_GC', 'auto_commit')
 
-    def __init__(self, file_name, tree_conf: TreeConf, cache_size=256):
+    def __init__(self, file_name, tree_conf: TreeConf, cache_size=1024):
         self._filename = file_name
         self._tree_conf = tree_conf
 
         if cache_size == 0:
             self._cache = FakeCache()
+        elif cache_size < 0:
+            self._cache = LRUCache()  # cache without size limitation
         else:
             self._cache = LRUCache(capacity=cache_size)
         self._fd = open_database_file(self._filename)
@@ -184,7 +186,7 @@ class FileHandler(object):
         """
         add & update node overflow_data into db file and also add to cache
         """
-        #self._wal.set_page(node.page, node.dump())
+        # self._wal.set_page(node.page, node.dump())
         self._write_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
@@ -196,8 +198,8 @@ class FileHandler(object):
         if node:
             return node
 
-        #data = self._wal.get_page(page)
-        #if not data:
+        # data = self._wal.get_page(page)
+        # if not data:
         data = self._read_page_data(page)
 
         node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)

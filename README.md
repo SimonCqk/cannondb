@@ -20,8 +20,8 @@ CannonDB
 | Windows 10 | i5-5200U |    8G    |
 
 
-- about write 1000 records per second.
-- about read 2500 records per second. 
+- about write 3000 records per second.
+- about read 14000 records per second. 
 
 since my current machine is out-of-date, it'll absolutely run a better 
 performance on other machine.  

@@ -17,7 +17,7 @@ class BTree(object):
     BRANCH = LEAF = BNode
 
     def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 16,
-                 value_size: int = 64, cache_size=256):
+                 value_size: int = 64, cache_size=1024):
         self._file_name = file_name
         self._tree_conf = TreeConf(order=order, page_size=page_size,
                                    key_size=key_size, value_size=value_size)
