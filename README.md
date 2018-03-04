@@ -75,6 +75,18 @@ db.remove('test')
 del db['pi']
 ```
 
+##### about auto commit
+`commit` means flush and sync your file data with disk. It ensures the durability of 
+your data, while it's time consuming to flush and sync.
+if you desire for a good performance, turn-off auto commit, and do it manually.
+```python
+db.set_auto_commit(False)
+
+# commit manually
+db.commit()
+```
+else you'd just ignore it.
+
 ###### Do not forget to close db when exit.
 
 ### TODO

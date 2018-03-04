@@ -262,7 +262,7 @@ class WAL:
             self.needs_recovery = False
         else:
             logger.warning('Found an existing WAL file, '
-                           'the B+Tree was not closed properly')
+                           'the B Tree was not closed properly')
             self.needs_recovery = True
             self._load_wal()
 
