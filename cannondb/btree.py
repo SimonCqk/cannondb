@@ -160,9 +160,6 @@ class BTree(object):
     def commit(self):
         self.handler.commit()
 
-    def flush(self):
-        self.handler.flush()
-
     def __contains__(self, key):
         return BTree._present(key, self._path_to(key))
 
@@ -244,5 +241,6 @@ class BTree(object):
             return
         with self.handler.write_transaction:
             self.handler.ensure_root_block(self._root)
-            self.handler.close()
             self._closed = True
+        self.handler.close()
+

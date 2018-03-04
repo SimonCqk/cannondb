@@ -20,7 +20,7 @@ class FileHandler(object):
     Handling-layer between B tree engine and underlying db file
     """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_wal', '_lock',
-                 'last_page', '_page_GC','auto_commit')
+                 'last_page', '_page_GC', 'auto_commit')
 
     def __init__(self, file_name, tree_conf: TreeConf, cache_size=256):
         self._filename = file_name
@@ -39,7 +39,7 @@ class FileHandler(object):
         last_byte = self._fd.tell()
         self.last_page = int(last_byte / self._tree_conf.page_size)
         self._page_GC = list(self._load_page_gc())
-        self.auto_commit=True
+        self.auto_commit = True
 
     @property
     def write_transaction(self):
@@ -48,9 +48,12 @@ class FileHandler(object):
                 self._lock.writer_lock.acquire()
 
             def __exit__(_self, exc_type, exc_val, exc_tb):
+                # When some emergency happens in the middle of a write
+                # transaction we must roll it back and clear the cache
+                # because the writer may have partially modified the Nodes
                 if exc_type:
-                    self._cache.clear()
                     self._wal.rollback()
+                    self._cache.clear()
                 else:
                     if self.auto_commit:
                         self._wal.commit()
@@ -79,10 +82,7 @@ class FileHandler(object):
         page_start = page * self._tree_conf.page_size
         data = read_from_file(self._fd, page_start,
                               page_start + self._tree_conf.page_size)
-        if data == b'':
-            raise EndOfFileError('Page index out of range or page overflow_data noe set yet')
-        else:
-            return data
+        return data
 
     def _write_page_data(self, page: int, page_data: bytes, f_sync=False):
         """
@@ -184,8 +184,8 @@ class FileHandler(object):
         """
         add & update node overflow_data into db file and also add to cache
         """
-        # self._write_page_data(node.page, node.dump())
-        self._wal.set_page(node.page, node.dump())
+        #self._wal.set_page(node.page, node.dump())
+        self._write_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree):
@@ -196,9 +196,9 @@ class FileHandler(object):
         if node:
             return node
 
-        data = self._wal.get_page(page)
-        if not data:
-            data = self._read_page_data(page)
+        #data = self._wal.get_page(page)
+        #if not data:
+        data = self._read_page_data(page)
 
         node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)
         self._cache[node.page] = node
@@ -218,30 +218,27 @@ class FileHandler(object):
 
     def flush(self):
         """flush uncommitted changes to db file then clear the cache"""
-        rest = [(node_page, node)
-                for (node_page, node) in self._cache.items()]
-        # can not just iterate self._cache, because during iterating,
+        # can not just iterate cache, because during iterating,
         # cache will do refresh and size of cache changed at run time.
         with self.write_transaction:
-            for node_page, node in rest:
-                self._write_page_data(node_page, node.dump())
-            file_flush_and_sync(self._fd)
+            nodes = [node for node in self._cache.values()]
             self._cache.clear()
+            for node in nodes:
+                self._wal.set_page(node.page, node.dump())
             self.commit()
+            self.perform_checkpoint(reopen_wal=True)
+            file_flush_and_sync(self._fd)
 
     def close(self):
-        self.flush()
         self.perform_checkpoint()
         self._fd.close()
+        self._cache.clear()
 
 
 class FrameType(enum.Enum):
     PAGE = 1
     COMMIT = 2
     ROLLBACK = 3
-
-
-FRAME_TYPE_LENGTH_LIMIT = 1
 
 
 class WAL:
@@ -346,7 +343,14 @@ class WAL:
                 page.to_bytes(PAGE_ADDRESS_LIMIT, ENDIAN) +
                 page_data
         )
-        self._fd.seek(0, io.SEEK_END)
+
+        if page in self._not_committed_pages.keys() or page in self._committed_pages.keys() and \
+                frame_type == FrameType.PAGE:
+            # if page has wrote before, overwrite it, or the size of .wal file will be boom.
+            page_start = self._not_committed_pages.get(page, None) or self._committed_pages.get(page)
+            self._fd.seek(page_start)
+        else:
+            self._fd.seek(0, io.SEEK_END)
         write_to_file(self._fd, data, f_sync=frame_type != FrameType.PAGE)
         self._index_frame(frame_type, page, self._fd.tell() - self._page_size)
 

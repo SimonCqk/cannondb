@@ -2,7 +2,8 @@ from collections import namedtuple
 
 __all__ = ['PAGE_ADDRESS_LIMIT', 'PAGE_LENGTH_LIMIT', 'PAGE_ADDRESS_FORMAT', 'ENDIAN', 'KEY_LENGTH_LIMIT',
            'KEY_LENGTH_FORMAT', 'VALUE_LENGTH_FORMAT', 'VALUE_LENGTH_LIMIT', 'NODE_TYPE_LENGTH_LIMIT',
-           'SERIALIZER_TYPE_LENGTH_LIMIT', 'NODE_CONTENTS_LENGTH_LIMIT', 'INT_FORMAT', 'FLOAT_FORMAT', 'TreeConf']
+           'SERIALIZER_TYPE_LENGTH_LIMIT', 'NODE_CONTENTS_LENGTH_LIMIT', 'INT_FORMAT', 'FLOAT_FORMAT',
+           'FRAME_TYPE_LENGTH_LIMIT', 'TreeConf']
 
 # network (= big-endian)
 ENDIAN = 'big'
@@ -31,6 +32,9 @@ NODE_CONTENTS_LENGTH_LIMIT = 2
 
 # bytes for storing serializer type
 SERIALIZER_TYPE_LENGTH_LIMIT = 1
+
+# bytes for storing per frame used in WAL module
+FRAME_TYPE_LENGTH_LIMIT = 1
 
 INT_FORMAT = '!i'
 FLOAT_FORMAT = '!f'

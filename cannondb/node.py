@@ -52,10 +52,7 @@ class KeyValPair(metaclass=ABCMeta):
         self.val_ser = serializer_switcher(type_switcher(int.from_bytes(data[val_type_start:val_type_end], ENDIAN)))
         self._value = self.val_ser.deserialize(data[val_len_end:val_end])
 
-    def dump(self) -> bytes:
-        # assert self._key is not None and self._value is not None
-        if self._dumped:
-            return bytes(self._dumped)
+    def _dump(self):
         key_as_bytes = self.key_ser.serialize(self._key)
         key_len = len(key_as_bytes)
         key_type_as_bytes = type_switcher(type(self._key)).to_bytes(SERIALIZER_TYPE_LENGTH_LIMIT, ENDIAN)
@@ -73,7 +70,13 @@ class KeyValPair(metaclass=ABCMeta):
                 val_type_as_bytes
         )
         self._dumped = bytearray(data)
-        return data
+
+    def dump(self) -> bytes:
+        # assert self._key is not None and self._value is not None
+        if self._dumped:
+            return bytes(self._dumped)
+        self._dump()
+        return bytes(self._dumped)
 
     @property
     def key(self):
@@ -361,8 +364,10 @@ class BNode(BaseBNode):
         self._dumped = data
 
     def dump(self) -> bytes:
+
         if self._dumped:
             return bytes(self._dumped)
+
         self._dump()
         return bytes(self._dumped)
 
@@ -380,6 +385,7 @@ class BNode(BaseBNode):
             self.next_page = None  # critical!
 
     # methods for sync data in internal dumped data with append/insert/update/pop ops
+    # all methods must applied immediately when matched operation occurs.
     def update_content_in_dump(self, index: int, pair: KeyValPair):
         assert index < len(self.contents)
         if self._dumped:
@@ -554,32 +560,31 @@ class BNode(BaseBNode):
         """
         if parent_index > target_index:
             target.contents.append(parent.contents[target_index])
-            content_to_pop = self.contents.pop(0)
-            parent.contents[target_index] = content_to_pop
-            self.pop_content_in_dump(0)
             # origin len(target.content) == current len(...) - 1, cuz append already
             target.insert_content_in_dump(len(target.contents) - 1, parent.contents[target_index])
+            content_to_pop = self.contents.pop(0)
+            self.pop_content_in_dump(0)
+            parent.contents[target_index] = content_to_pop
             parent.update_content_in_dump(target_index, content_to_pop)
             if self.children:
                 child_to_pop = self.children.pop(0)
-                target.children.append(child_to_pop)
                 self.pop_child_in_dump(0)
+                target.children.append(child_to_pop)
                 target.insert_child_in_dump(len(target.children) - 1, child_to_pop)
         else:
             target.contents.insert(0, parent.contents[parent_index])
+            target.insert_content_in_dump(0, parent.contents[parent_index])
             content_to_pop = self.contents.pop()
-            parent.contents[parent_index] = content_to_pop
             # origin tail index == current len(...), cuz pop already
             self.pop_content_in_dump(len(self.contents))
-            target.insert_content_in_dump(0, parent.contents[parent_index])
+            parent.contents[parent_index] = content_to_pop
             parent.update_content_in_dump(parent_index, content_to_pop)
             if self.children:
                 child_to_pop = self.children.pop()
-                target.children.insert(0, child_to_pop)
                 self.pop_child_in_dump(len(self.children))
+                target.children.insert(0, child_to_pop)
                 target.insert_child_in_dump(0, child_to_pop)
         # update nodes inside handler
-        self.tree.handler.set_node(self)
         self.tree.handler.set_node(parent)
         self.tree.handler.set_node(target)
 
@@ -618,14 +623,13 @@ class BNode(BaseBNode):
 
         # pass the median up to the parent
         parent.contents.insert(parent_index, mid_pair)
-        parent.children.insert(parent_index + 1, sibling.page)
         parent.insert_content_in_dump(parent_index, mid_pair)
+        parent.children.insert(parent_index + 1, sibling.page)
         parent.insert_child_in_dump(parent_index + 1, sibling.page)
-        self.tree.handler.set_node(parent)  # sync
-        self.tree.handler.set_node(sibling)  # IMPORTANT!
         if len(parent.contents) > parent.tree.order:
             parent.shrink(ancestors)
-        self.tree.handler.set_node(self)  # IMPORTANT!
+        self.tree.handler.set_node(parent)  # sync
+        self.tree.handler.set_node(sibling)  # IMPORTANT!
 
     def split(self):
         """
@@ -642,7 +646,6 @@ class BNode(BaseBNode):
         self.contents = self.contents[:center]
         self.children = self.children[:center + 1]
         self._dump()  # update self._dumped
-        self.tree.handler.set_node(self)
         return sibling, mid_pair
 
     def grow(self, ancestors: list):

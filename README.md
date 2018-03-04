@@ -11,7 +11,21 @@ CannonDB
 - str/int/float/dict types of key/value are supported.
 - storage data in file defaulted, but storage in memory is also supported. 
 - flexible parameter (db name/ page size/ key size/ value size /cache size) configuration to satisfy your demand.
-- use WAL(write-logging ahead) tech to avoid losing uncommitted data when emergency happens.
+- use WAL (write-logging ahead) technique to provide strong safety guarantee.
+
+### Performance
+
+|  Platform  |    CPU   |  Memory  |
+| :---------: |:-------:| :------: |
+| Windows 10 | i5-5200U |    8G    |
+
+
+- about write 1000 records per second.
+- about read 2500 records per second. 
+
+since my current machine is out-of-date, it'll absolutely run a better 
+performance on other machine.  
+
 ### How to use
 
 ##### create a db instance
@@ -61,7 +75,7 @@ db.remove('test')
 del db['pi']
 ```
 
-### Do not forget to close db when exit.
+###### Do not forget to close db when exit.
 
 ### TODO
 
