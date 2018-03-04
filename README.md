@@ -2,6 +2,7 @@
 
 CannonDB
 ========
+[![Build Status](https://travis-ci.org/SimonCqk/cannondb.svg?branch=master)](https://travis-ci.org/SimonCqk/cannondb)
 
 **`CannonDB` is a lightweight but powerful key-value database designed for human beings.** 
 
