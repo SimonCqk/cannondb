@@ -9,7 +9,7 @@ import rwlock
 
 from cannondb.constants import *
 from cannondb.node import BNode, BaseBNode, OverflowNode
-from cannondb.utils import LRUCache, open_database_file, read_from_file, write_to_file, \
+from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, \
     file_flush_and_sync, EndOfFileError
 
 logger = logging.getLogger(__name__)
@@ -26,8 +26,10 @@ class FileHandler(object):
         self._filename = file_name
         self._tree_conf = tree_conf
 
-        if cache_size <= 0:
+        if cache_size < 0:
             self._cache = LRUCache()  # cache without size limitation
+        elif cache_size == 0:
+            self._cache = FakeCache()
         else:
             self._cache = LRUCache(capacity=cache_size)
         self._fd = open_database_file(self._filename)
@@ -185,8 +187,8 @@ class FileHandler(object):
         """
         add & update node overflow_data into db file and also add to cache
         """
-        # self._wal.set_page(node.page, node.dump())
-        self._write_page_data(node.page, node.dump())
+        self._wal.set_page(node.page, node.dump())
+        # self._write_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree):
@@ -197,9 +199,9 @@ class FileHandler(object):
         if node:
             return node
 
-        # data = self._wal.get_page(page)
-        # if not data:
-        data = self._read_page_data(page)
+        data = self._wal.get_page(page)
+        if not data:
+            data = self._read_page_data(page)
 
         node = BaseBNode.from_raw_data(tree, self._tree_conf, page, data)
         self._cache[node.page] = node
@@ -345,11 +347,11 @@ class WAL:
                 page_data
         )
 
-        if page in self._not_committed_pages.keys() or page in self._committed_pages.keys() and \
-                frame_type == FrameType.PAGE:
-            # if page has wrote before, overwrite it, or the size of .wal file will be boom.
-            page_start = self._not_committed_pages.get(page, None) or self._committed_pages.get(page)
-            self._fd.seek(page_start)
+        if page in self._committed_pages.keys() and frame_type == FrameType.PAGE:
+            # if page has wrote before, overwrite it, or the size of .wal file will boom.
+            page_start = self._committed_pages[page]
+            seek_start = page_start - FRAME_TYPE_LENGTH_LIMIT - PAGE_ADDRESS_LIMIT
+            self._fd.seek(seek_start)
         else:
             self._fd.seek(0, io.SEEK_END)
         write_to_file(self._fd, data, f_sync=frame_type != FrameType.PAGE)

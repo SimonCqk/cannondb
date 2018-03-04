@@ -61,6 +61,19 @@ def generate_address(data):
     return hash(data) ^ (hash(data) >> 2)
 
 
+class FakeCache(object):
+    """A cache that doesn't cache anything."""
+
+    def get(self, k, d=None):
+        pass
+
+    def __setitem__(self, key, value):
+        pass
+
+    def clear(self):
+        pass
+
+
 class LRUCache(dict):
 
     def __init__(self, *args, **kwargs):
