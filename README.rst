@@ -1,15 +1,10 @@
-.. figure:: https://github.com/SimonCqk/cannondb/blob/master/logo/cannon.jpg?raw=true
-   :alt: logo
-
-   logo
-
 CannonDB
 ========
 
 |Build Status| |language| |license|
 
-**``CannonDB`` is a lightweight but powerful key-value database designed
-for human beings.**
+``CannonDB`` is a lightweight but powerful key-value database designed
+for human beings.
 
 Features
 ~~~~~~~~

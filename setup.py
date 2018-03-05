@@ -10,7 +10,6 @@ def open_local(paths: list, mode='r', encoding='utf-8'):
         os.path.abspath(os.path.dirname(__file__)),
         *paths
     )
-
     return codecs.open(path, mode, encoding)
 
 
@@ -34,7 +33,7 @@ setup(
     author='SimonCqk',
     author_email='cqk0100@gmail.com',
     description='CannonDB is a lightweight but powerful key-value database created for human beings.',
-    keywords='database key-value python nosql',
+    keywords=['database', 'key-value', 'python', 'nosql'],
     long_description=long_description,
     install_requires=[
         'rwlock'
@@ -55,6 +54,5 @@ setup(
         'Topic :: Communications :: Email',
         'Topic :: Database :: Database Engines/Servers',
         'Topic :: Software Development :: Libraries :: Python Modules',
-
     ]
 )
