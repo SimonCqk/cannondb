@@ -1,10 +1,15 @@
+.. figure:: https://github.com/SimonCqk/cannondb/blob/master/logo/cannon.jpg?raw=true
+   :alt: logo
+
+   logo
+
 CannonDB
 ========
 
 |Build Status| |language| |license|
 
-``CannonDB`` is a lightweight but powerful key-value database designed
-for human beings.
+**``CannonDB`` is a lightweight but powerful key-value database designed
+for human beings.**
 
 Features
 ~~~~~~~~
@@ -106,6 +111,18 @@ manually.
     db.commit()
 
 else you’d just ignore it.
+
+about checkpoint
+''''''''''''''''
+
+WAL(write-ahead logging) pre-write your committed data into WAL file
+(see as data buffer cache), but not real database file, ``checkpoint``
+does the work of
+``write all your cached data(has been saved properly) before this  time point into real database file``.
+
+.. code:: python
+
+    db.checkpoint()
 
 Do not forget to close db when exit.
                                     
