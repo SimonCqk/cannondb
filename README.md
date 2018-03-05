@@ -2,7 +2,9 @@
 
 CannonDB
 ========
-[![Build Status](https://travis-ci.org/SimonCqk/cannondb.svg?branch=master)](https://travis-ci.org/SimonCqk/cannondb)
+[![Build Status](https://travis-ci.org/SimonCqk/cannondb.svg?branch=master)](https://travis-ci.org/SimonCqk/cannondb) 
+![language](https://img.shields.io/badge/language-python-blue.svg)
+![license](https://img.shields.io/badge/license-MIT-000000.svg)
 
 **`CannonDB` is a lightweight but powerful key-value database designed for human beings.** 
 
