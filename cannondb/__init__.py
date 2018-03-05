@@ -1,6 +1,8 @@
 from cannondb.database import CannonDB
 from cannondb.storages import FileStorage, MemoryStorage
 
+__version__ = '1.0.0'
+
 __all__ = ('CannonDB', 'FileStorage', 'MemoryStorage')
 
 
