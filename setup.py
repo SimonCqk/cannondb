@@ -27,7 +27,6 @@ setup(
     name='cannondb',
     version=version,
     packages=['cannondb'],
-    zip_safe=True,
     url='https://github.com/SimonCqk/cannondb',
     license='MIT',
     author='SimonCqk',

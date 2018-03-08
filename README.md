@@ -99,6 +99,22 @@ time point into real database file`.
 db.checkpoint()
 ```
 
+##### logging
+`cannondb` provides 3 kind of logging mode.
+
+- 'local': logging in local file (log.log)
+- 'tcp'/'udp: use TCP/UDP socket to redirect logging to a concrete host 
+
+```python
+import cannondb
+# use local mode
+db = cannondb.connect(log='local')
+
+# use tcp/udp mode
+# host and port must be specified.
+db = cannondb.connect(log='tcp', host=127.0.0.1, port=2048)
+```
+
 ###### Do not forget to close db when exit.
 
 ### TODO
