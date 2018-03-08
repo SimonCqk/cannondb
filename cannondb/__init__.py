@@ -12,14 +12,14 @@ def connect(file_name: str = 'database', cache_size: int = 128, *, order=100, pa
             value_size=64, file_cache=1024, **kwargs):
     db = CannonDB(file_name=file_name, cache_size=cache_size, order=order, page_size=page_size, key_size=key_size,
                   value_size=value_size, file_cache=file_cache, **kwargs)
-    log_config = kwargs.pop('log', None)
+    log_mode = kwargs.pop('log', None)
 
-    if log_config == 'tcp' or log_config == 'udp':
+    if log_mode == 'tcp' or log_mode == 'udp':
         host, port = kwargs.pop('host', None), kwargs.pop('port', None)
         if host is None or port is None:
             raise ValueError('Host and port of Log Socket should be specified')
-        db = log_wrapper(db, METHODS_TO_LOG, config=log_config, host=host, port=port)
-    elif log_config == 'local':
-        db = log_wrapper(db, METHODS_TO_LOG, config=log_config)
+        db = log_wrapper(db, METHODS_TO_LOG, log_mode=log_mode, host=host, port=port)
+    elif log_mode == 'local':
+        db = log_wrapper(db, METHODS_TO_LOG, log_mode=log_mode)
 
     return db

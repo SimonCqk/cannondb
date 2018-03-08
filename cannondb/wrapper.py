@@ -54,11 +54,21 @@ else:
         return wrapper
 
 
-def log_wrapper(cls, methods_to_log: tuple, config='local', host=None, port=None):
+def log_wrapper(cls, methods_to_log: tuple, log_mode='local', host=None, port=None):
+    """
+    :param cls: instance to be logged
+    :param methods_to_log: methods of instance to be logged (both method name, parameters, time
+                           of invoking will be logged)
+    :param log_mode: 'local': log in local file (log.log)
+                     'tcp' or 'udp': log to concrete host & port
+    :param host: target host if log mode is 'tcp' or 'udp'
+    :param port: port of target host if log mode is 'tcp' or 'udp'
+    :return: wrapped instance
+    """
     orig_cls = cls.__class__
     logger = logging.getLogger(orig_cls.__name__)
-    if config == 'tcp' or config == 'udp':
-        handler = log_handlers.SocketHandler(host=host, port=port) if config == 'tcp' else log_handlers.DatagramHandler(
+    if log_mode == 'tcp' or log_mode == 'udp':
+        handler = log_handlers.SocketHandler(host=host, port=port) if log_mode == 'tcp' else log_handlers.DatagramHandler(
             host=host, port=port)
     else:
         if not os.path.exists(_log_file_name):

@@ -21,8 +21,10 @@ class CannonDB(with_metaclass(ABCMeta)):
         :param key_size: maximum _key size limitation (only used by file storage)
         :param value_size: maximum _value size limitation (only used by file storage)
         :param file_cache: LRU cache size (only used by file storage)
-        :param kwargs: specify storage type: storage='file' or storage='memory'
-                       multi-process lock open: m_process=True (only used by memory storage)
+        :param kwargs: specify storage type: 'storage'='file' or 'storage'='memory'
+                       multi-process lock open: 'm_process'=True (only used by memory storage)
+                       log mode: 'log'='local' (log in local file (log.log))
+                                 'log'='tcp' or 'udp': log to concrete host & port
         """
         super().__init__()
         storage = kwargs.pop('storage', None)
