@@ -12,7 +12,7 @@ from cannondb.node import BNode, BaseBNode, OverflowNode
 from cannondb.utils import LRUCache, FakeCache, open_database_file, read_from_file, write_to_file, \
     file_flush_and_sync, EndOfFileError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(DEFAULT_LOGGER_NAME)
 
 
 class FileHandler(object):

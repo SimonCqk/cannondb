@@ -3,11 +3,12 @@ import logging
 import math
 from typing import Iterable
 
-from cannondb.constants import TreeConf
+from cannondb.constants import TreeConf, DEFAULT_LOGGER_NAME
 from cannondb.handler import FileHandler
 from cannondb.node import BNode
 
-logger=logging.getLogger(__name__)
+logger = logging.getLogger(DEFAULT_LOGGER_NAME)
+
 
 class DBNotOpenError(Exception):
     """raise when trying to do ops but storage was closed"""
@@ -97,16 +98,20 @@ class BTree(object):
     def multi_insert(self, pairs: Iterable, override=False):
         """
         insert a batch of _key-_value pair at one time.
+        strongly recommend use multi insert when have a batch of pairs to insert,
+        (commit one time) versus (commit n times).
         """
-        if not isinstance(pairs, Iterable):
-            raise TypeError('pairs should be a iterable object')
-        elif isinstance(pairs, (tuple, list, set)):
-            sorted(pairs, key=lambda it: it[0])  # sort by _key
-            for key, value in pairs:
-                self.insert(key, value, override)
-        elif isinstance(pairs, dict):
-            for key, value in pairs.items():
-                self.insert(key, value, override)
+        with self.handler.write_transaction:
+            if not isinstance(pairs, Iterable):
+                raise TypeError('pairs should be a iterable object')
+            elif isinstance(pairs, dict):
+                for key, value in pairs.items():
+                    self.insert(key, value, override)
+            else:
+                if hasattr(pairs, 'sort'):
+                    pairs.sort(key=lambda p: p[0])  # sort by key
+                for key, value in pairs:
+                    self.insert(key, value, override)
 
     def remove(self, key):
         ancestors = self._path_to(key)
@@ -246,5 +251,4 @@ class BTree(object):
             self.handler.ensure_root_block(self._root)
             self._closed = True
         self.handler.close()
-        logging.info('Database has been closed.')
-
+        logger.info('Database has been closed.')

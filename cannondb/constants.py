@@ -3,7 +3,7 @@ from collections import namedtuple
 __all__ = ['PAGE_ADDRESS_LIMIT', 'PAGE_LENGTH_LIMIT', 'PAGE_ADDRESS_FORMAT', 'ENDIAN', 'KEY_LENGTH_LIMIT',
            'KEY_LENGTH_FORMAT', 'VALUE_LENGTH_FORMAT', 'VALUE_LENGTH_LIMIT', 'NODE_TYPE_LENGTH_LIMIT',
            'SERIALIZER_TYPE_LENGTH_LIMIT', 'NODE_CONTENTS_LENGTH_LIMIT', 'INT_FORMAT', 'FLOAT_FORMAT',
-           'FRAME_TYPE_LENGTH_LIMIT', 'TreeConf']
+           'FRAME_TYPE_LENGTH_LIMIT', 'DEFAULT_LOGGER_NAME', 'METHODS_TO_LOG', 'TreeConf']
 
 # network (= big-endian)
 ENDIAN = 'big'
@@ -38,6 +38,17 @@ FRAME_TYPE_LENGTH_LIMIT = 1
 
 INT_FORMAT = '!i'
 FLOAT_FORMAT = '!f'
+
+DEFAULT_LOGGER_NAME = 'Logger'
+
+METHODS_TO_LOG = (
+    'remove',
+    'get',
+    'checkpoint',
+    'commit',
+    'set_auto_commit',
+    'close'
+)
 
 TreeConf = namedtuple('TreeConf', [
     'order',  # order of B tree

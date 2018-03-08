@@ -21,8 +21,8 @@ class CannonDB(with_metaclass(ABCMeta)):
         :param key_size: maximum _key size limitation (only used by file storage)
         :param value_size: maximum _value size limitation (only used by file storage)
         :param file_cache: LRU cache size (only used by file storage)
-        :param kwargs: to specify storage type: storage='file' or storage='memory'
-                                  multi-process lock open: m_process=True (only used by memory storage)
+        :param kwargs: specify storage type: storage='file' or storage='memory'
+                       multi-process lock open: m_process=True (only used by memory storage)
         """
         super().__init__()
         storage = kwargs.pop('storage', None)
@@ -67,6 +67,8 @@ class CannonDB(with_metaclass(ABCMeta)):
         self._storage.set_auto_commit(auto)
 
     def close(self):
+        if hasattr(self, '_logger'):
+            self._logger.close()
         self._storage.close()
         self._closed = True
 

@@ -10,14 +10,15 @@ def test_normal_insert():
     tree.insert('a', 1, override=True)
     tree.insert('b', 2, override=True)
     tree.insert('c', 3, override=True)
+    tree.commit()
     assert tree['a'] == 1
     assert tree['c'] == 3
 
 
 def test_scale_insert():
-    start, end = 0, 10000
-    for i in range(start, end):
+    for i in range(0, 10000):
         tree.insert(str(i), i, override=True)
+    tree.commit()
 
 
 def test_range_get():
@@ -34,6 +35,7 @@ def test_insert_float():
     assert tree['f1'] == 1.1613168453135168
     tree.insert('f2', 1546646.55845454548, override=True)
     assert tree['f2'] == 1546646.55845454548
+    tree.commit()
 
 
 def test_insert_dict():
@@ -42,6 +44,7 @@ def test_insert_dict():
     d2 = {'d': -1, 'f': 'asd', 'test': 'inside'}
     tree.insert('d2', d2, override=True)
     assert tree['d2'] == d2
+    tree.commit()
 
 
 if __name__ == '__main__':
@@ -51,13 +54,14 @@ if __name__ == '__main__':
     p = pstats.Stats("result.txt")
     p.sort_stats("time").print_stats()
     '''
+    tree.set_auto_commit(False)
     start = time.time()
-    # test_scale_insert()
-
+    test_scale_insert()
     test_range_get()
     end = time.time()
     print(end - start)
     # test_iter_self()
     # test_insert_float()
     # test_insert_dict()
+    tree.commit()
     tree.close()
