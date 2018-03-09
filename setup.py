@@ -27,12 +27,13 @@ setup(
     name='cannondb',
     version=version,
     packages=['cannondb'],
+    zip_safe=True,
     url='https://github.com/SimonCqk/cannondb',
     license='MIT',
     author='SimonCqk',
     author_email='cqk0100@gmail.com',
     description='CannonDB is a lightweight but powerful key-value database created for human beings.',
-    keywords=['database', 'key-value', 'python', 'nosql'],
+    keywords='database key-value python nosql',
     long_description=long_description,
     install_requires=[
         'rwlock'
@@ -41,17 +42,19 @@ setup(
     python_requires=">=3.5",
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Environment :: MacOS X',
-        'Environment :: Win32 (MS Windows)',
         'License :: OSI Approved :: MIT License',
-        'Operating System :: MacOS :: MacOS X',
-        'Operating System :: Microsoft :: Windows',
-        'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 3 :: Only',
-        'Natural Language :: English',
         'Topic :: Database',
         'Topic :: Communications :: Email',
         'Topic :: Database :: Database Engines/Servers',
         'Topic :: Software Development :: Libraries :: Python Modules',
+        'Programming Language :: Python :: 3',
+        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: Implementation :: CPython",
+        "Programming Language :: Python :: Implementation :: PyPy",
+        'Operating System :: MacOS :: MacOS X',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: POSIX :: Linux',
+        'Natural Language :: English'
     ]
 )

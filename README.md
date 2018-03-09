@@ -8,6 +8,10 @@ CannonDB
 
 **`CannonDB` is a lightweight but powerful key-value database designed for human beings.** 
 
+### Installation
+
+> pip install cannondb
+
 ### Features
 
 - maintained by a on-disk B tree, so insert/get/remove is fast enough.
