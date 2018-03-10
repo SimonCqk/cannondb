@@ -145,7 +145,7 @@ logging
 
     # use tcp/udp mode
     # host and port must be specified.
-    db = cannondb.connect(log='tcp', host=127.0.0.1, port=2048)
+    db = cannondb.connect(log='tcp', host='127.0.0.1', port=2048)
 
 Do not forget to close db when exit.
                                     

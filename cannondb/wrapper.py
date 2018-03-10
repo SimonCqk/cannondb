@@ -68,11 +68,12 @@ def log_wrapper(cls, methods_to_log: tuple, log_mode='local', host=None, port=No
     orig_cls = cls.__class__
     logger = logging.getLogger(orig_cls.__name__)
     if log_mode == 'tcp' or log_mode == 'udp':
-        handler = log_handlers.SocketHandler(host=host, port=port) if log_mode == 'tcp' else log_handlers.DatagramHandler(
+        handler = log_handlers.SocketHandler(host=host,
+                                             port=port) if log_mode == 'tcp' else log_handlers.DatagramHandler(
             host=host, port=port)
     else:
         if not os.path.exists(_log_file_name):
-            os.open(_log_file_name, os.O_RDWR | os.O_CREAT)
+            open(_log_file_name, 'a').close()
         handler = logging.FileHandler(_log_file_name, mode='r+')
     logger.addHandler(handler)
 

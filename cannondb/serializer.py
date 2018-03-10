@@ -87,12 +87,10 @@ type_num_map = {
     0: int,
     1: float,
     2: str,
-    3: dict,
-    int: 0,
-    float: 1,
-    str: 2,
-    dict: 3
+    3: dict
 }
+
+type_num_map.update(dict(zip(type_num_map.values(), type_num_map.keys())))
 
 
 def serializer_switcher(t: Type[Union[int, float, str, dict]]) -> Serializer:

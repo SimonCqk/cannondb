@@ -3,7 +3,7 @@ from cannondb.database import CannonDB
 from cannondb.storages import FileStorage, MemoryStorage
 from cannondb.wrapper import log_wrapper
 
-__version__ = '1.1.0'
+__version__ = '1.1.1'
 
 __all__ = ('CannonDB', 'FileStorage', 'MemoryStorage')
 
