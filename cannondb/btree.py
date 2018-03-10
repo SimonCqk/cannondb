@@ -113,6 +113,17 @@ class BTree(object):
                 for key, value in pairs:
                     self.insert(key, value, override)
 
+    def multi_read(self, keys: Iterable) -> dict:
+        """
+        :param keys: keys need to read from database.
+        :return: dictionary map from keys to values.
+        """
+        with self.handler.read_transaction:
+            pairs = dict()
+            for key in keys:
+                pairs[key] = self.get(key)
+        return pairs
+
     def remove(self, key):
         ancestors = self._path_to(key)
 
