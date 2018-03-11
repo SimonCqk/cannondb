@@ -21,7 +21,7 @@ def open_database_file(file_name, suffix='.cdb'):
     return f
 
 
-def file_flush_and_sync(f: io.FileIO):
+async def file_flush_and_sync(f: io.FileIO):
     """
     call system sync, ensure write the file’s overflow_data to disk, but it's a EXPENSIVE op
     """
@@ -29,7 +29,7 @@ def file_flush_and_sync(f: io.FileIO):
     os.fsync(f.fileno())
 
 
-def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
+async def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     length = stop - start
     assert length >= 0
     file_fd.seek(start)
@@ -43,7 +43,7 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     return data
 
 
-def write_to_file(file_fd: io.FileIO, data: bytes, f_sync: bool = False):
+async def write_to_file(file_fd: io.FileIO, data: bytes, f_sync: bool = False):
     length_to_write = len(data)
     written = 0
     while written < length_to_write:
