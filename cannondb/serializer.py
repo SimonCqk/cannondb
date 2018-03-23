@@ -2,6 +2,7 @@ import json
 import struct
 from abc import ABCMeta
 from typing import Union, Type
+from uuid import UUID
 
 from cannondb.constants import INT_FORMAT, FLOAT_FORMAT
 
@@ -67,7 +68,7 @@ class DictSerializer(Serializer):
     __slots__ = []
 
     @staticmethod
-    def serialize(obj: object) -> bytes:
+    def serialize(obj: dict) -> bytes:
         return json.dumps(obj, ensure_ascii=False).encode(encoding='utf-8')
 
     @staticmethod
@@ -75,25 +76,39 @@ class DictSerializer(Serializer):
         return json.loads(data.decode(encoding='utf-8'))
 
 
+class UUIDSerializer(Serializer):
+    __slots__ = []
+
+    @staticmethod
+    def serialize(obj: UUID) -> bytes:
+        return obj.bytes
+
+    @staticmethod
+    def deserialize(data: bytes) -> UUID:
+        return UUID(bytes=data)
+
+
 # make it a global var
 serializer_map = {
     int: IntSerializer(),
     float: FloatSerializer(),
     str: StrSerializer(),
-    dict: DictSerializer()
+    dict: DictSerializer(),
+    UUID: UUIDSerializer()
 }
 
 type_num_map = {
     0: int,
     1: float,
     2: str,
-    3: dict
+    3: dict,
+    4: UUID
 }
 
 type_num_map.update(dict(zip(type_num_map.values(), type_num_map.keys())))
 
 
-def serializer_switcher(t: Type[Union[int, float, str, dict]]) -> Serializer:
+def serializer_switcher(t: Type[Union[int, float, str, dict, UUID]]) -> Serializer:
     """return corresponding serializer to arg type"""
     try:
         return serializer_map[t]

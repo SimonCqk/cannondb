@@ -20,7 +20,7 @@ Features
 ~~~~~~~~
 
 -  maintained by a on-disk B tree, so insert/get/remove is fast enough.
--  str/int/float/dict types of key/value are supported.
+-  str/int/float/dict/UUID types of key/value are supported.
 -  storage data in file defaulted, but storage in memory is also
    supported.
 -  flexible parameter (db name/ page size/ key size/ value size /cache
