@@ -3,6 +3,7 @@ This file include the main interface of CannonDB.
 """
 import threading
 import time
+import asyncio
 from abc import ABCMeta
 
 from cannondb.constants import DEFAULT_CHECKPOINT_SECONDS
@@ -36,6 +37,7 @@ class CannonDB(with_metaclass(ABCMeta)):
         else:
             self._storage = FileStorage(file_name, order, page_size, key_size, value_size, file_cache)
         self._cache = LRUCache(capacity=cache_size)
+        self._loop = asyncio.get_event_loop()
         self._closed = False
         self._checkpoint_th = threading.Thread(target=self._timing_checkpoint,args=(DEFAULT_CHECKPOINT_SECONDS,)).start()
 
@@ -80,6 +82,8 @@ class CannonDB(with_metaclass(ABCMeta)):
     def close(self):
         if hasattr(self, '_logger'):
             self._logger.close()
+        if self._loop.is_running():
+            self._loop.close()
         self._storage.close()
         self._closed = True
         self._checkpoint_th.join()
