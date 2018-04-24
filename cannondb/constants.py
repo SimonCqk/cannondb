@@ -39,6 +39,9 @@ FRAME_TYPE_LENGTH_LIMIT = 1
 INT_FORMAT = '!i'
 FLOAT_FORMAT = '!f'
 
+# default seconds to do checkpoint
+DEFAULT_CHECKPOINT_SECONDS = 120
+
 DEFAULT_LOGGER_NAME = 'Logger'
 
 METHODS_TO_LOG = (
