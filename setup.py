@@ -13,7 +13,7 @@ def open_local(paths: list, mode='r', encoding='utf-8'):
     return codecs.open(path, mode, encoding)
 
 
-with open_local(['README.rst']) as f:
+with open_local(['README.md']) as f:
     long_description = f.read()
 
 with open_local(['cannondb', '__init__.py']) as fp:
@@ -35,6 +35,7 @@ setup(
     description='CannonDB is a lightweight but powerful key-value database created for human beings.',
     keywords='database key-value python nosql',
     long_description=long_description,
+    long_description_content_type='text/markdown',
     install_requires=[
         'rwlock'
     ],

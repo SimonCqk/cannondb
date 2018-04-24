@@ -37,8 +37,7 @@ class CannonDB(with_metaclass(ABCMeta)):
             self._storage = FileStorage(file_name, order, page_size, key_size, value_size, file_cache)
         self._cache = LRUCache(capacity=cache_size)
         self._closed = False
-        self._check_th=threading.Thread(target=self._timing_checkpoint,args=(DEFAULT_CHECKPOINT_SECONDS,))
-        self._check_th.start()
+        self._checkpoint_th = threading.Thread(target=self._timing_checkpoint,args=(DEFAULT_CHECKPOINT_SECONDS,)).start()
 
     def insert(self, key, value, override=False):
         self._cache[key] = value
@@ -64,9 +63,7 @@ class CannonDB(with_metaclass(ABCMeta)):
         return self._storage.get(key, default)
 
     def _timing_checkpoint(self, secs: int):
-        while True:
-            if self._closed:
-                return
+        while not self._closed:
             time.sleep(secs)
             self.checkpoint()
 
@@ -85,7 +82,7 @@ class CannonDB(with_metaclass(ABCMeta)):
             self._logger.close()
         self._storage.close()
         self._closed = True
-        self._check_th.join()
+        self._checkpoint_th.join()
 
     @property
     def is_open(self):
