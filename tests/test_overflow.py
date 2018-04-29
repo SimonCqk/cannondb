@@ -1,5 +1,3 @@
-import time
-
 from cannondb.btree import BTree
 
 file_name = 'test_overflow'
@@ -25,8 +23,4 @@ def test_overflow():
     assert tree['6789'] == 6789
 
 
-if __name__ == '__main__':
-    start = time.time()
-    test_overflow()
-    end = time.time()
-    print('time:', end - start)
+if __name__ == '__main__':    test_overflow()
