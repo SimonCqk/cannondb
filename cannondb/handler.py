@@ -169,6 +169,7 @@ class FileHandler(object):
             for page, page_data in self._wal.checkpoint():
                 self._write_page_data(page, page_data, f_sync=False)
             file_flush_and_sync(self._fd)
+
             if reopen_wal:
                 self._wal = WAL(self._filename, self._tree_conf.page_size)
 
@@ -187,7 +188,6 @@ class FileHandler(object):
         add & update node overflow_data into db file and also add to cache
         """
         self._wal.set_page(node.page, node.dump())
-        # self._write_page_data(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree):
@@ -229,8 +229,8 @@ class FileHandler(object):
             for node in nodes:
                 self._wal.set_page(node.page, node.dump())
             self.commit()
-            self.perform_checkpoint(reopen_wal=True)
             file_flush_and_sync(self._fd)
+            self.perform_checkpoint(reopen_wal=True)
 
     def close(self):
         self.perform_checkpoint()
@@ -269,7 +269,6 @@ class WAL:
     def checkpoint(self):
         """Transfer the modified data back to the tree and close the WAL."""
         if self._not_committed_pages:
-            print(len(self._not_committed_pages))
             logger.warning('Closing WAL with uncommitted data, discarding it')
 
         file_flush_and_sync(self._fd)
