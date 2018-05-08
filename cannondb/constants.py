@@ -36,7 +36,7 @@ SERIALIZER_TYPE_LENGTH_LIMIT = 1
 # bytes for storing per frame used in WAL module
 FRAME_TYPE_LENGTH_LIMIT = 1
 
-INT_FORMAT = '!i'
+INT_FORMAT = '!l'
 FLOAT_FORMAT = '!f'
 
 # default seconds to do checkpoint

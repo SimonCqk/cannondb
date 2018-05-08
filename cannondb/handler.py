@@ -116,7 +116,10 @@ class FileHandler(object):
         """
         if dep_page in self._cache:  # remove deprecated node in cache
             del self._cache[dep_page]
-        self._wal.set_page_deprecated(dep_page, dep_page_data)
+        # when auto_commit closed, WAL won't record uncommitted_pages,
+        # so deprecated pages only maintained in memory.
+        if self._auto_commit:
+            self._wal.set_page_deprecated(dep_page, dep_page_data)
 
     def _takeout_deprecated_page(self):
         """if GC has more than one page, take out smallest one"""
