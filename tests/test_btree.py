@@ -60,7 +60,17 @@ def test_insert_dict():
 
 def test_insert_list():
     tree = BTree(test_file_name)
+    tree.insert('l1', [1, 2, 3], override=True)
+    tree.insert('l2', [2.1, 'cannon', 0], override=True)
+    assert tree['l1'] == [1, 2, 3]
+    assert tree['l2'] == [2.1, 'cannon', 0]
+    tree.commit()
+    tree.close()
 
 
 if __name__ == '__main__':
-    test_scale_insert()
+    # test_scale_insert()
+    test_normal_insert()
+    test_insert_float()
+    test_insert_dict()
+    test_insert_list()
