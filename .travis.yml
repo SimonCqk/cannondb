@@ -6,13 +6,16 @@ python:
   - "3.6"
   - "3.5"
 
-before_install: pip install rwlock
+before_install:
+  - pip install rwlock
+  - pip install pytest
 
 install:
   - pip install coveralls
 
 script:
   - python setup.py test
+  - pytest tests/*
 
 after_success:
   - coveralls

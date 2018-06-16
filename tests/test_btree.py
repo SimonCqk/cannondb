@@ -2,6 +2,7 @@ import random
 from tests.util import refine_test_file
 
 from cannondb.btree import BTree
+from cannondb.constants import TreeConf
 
 TEST_RANDOM_NUMS = 100000
 test_file_name = refine_test_file('test_tree')
@@ -23,7 +24,8 @@ def test_normal_insert():
     tree.close()
 
 
-def test_scale_insert():
+def __test_scale_insert():
+    """ Time-consumed """
     tree = BTree(test_file_name)
     nums = [random.randrange(0, 0xFFFFFF) for _ in range(TEST_RANDOM_NUMS)]
     tree.set_auto_commit(False)
@@ -69,9 +71,27 @@ def test_insert_list():
     tree.close()
 
 
+"""
+test_tree config set as: order=3, page size=32, key size=8, value size=12
+root node raw overflow_data should be:b'\x00\x00T\x00\x00\x00\x00\x00\x02\x00\x041234
+\x00\x00\x00\x00\x02\x00\x00\x00\x04\x00\x00\x04\xd2\x00\x00\x00\x00\x00\x00
+\x00\x00\x00\x00\x044567\x00\x00\x00\x00\x02\x00\x00\x00\x04\x00\x00\x11\xd7
+\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x046789\x00\x00\x00\x00\x02\x00\x00
+\x00\x04\x00\x00\x1a\x85\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+, after combining all overflow overflow_data, it should be matched.
+"""
+
+
+def test_overflow():
+    test_of_name = refine_test_file('test_overflow')
+    test_tree = BTree(test_of_name, 3, 32, 8, 12, 0)
+    test_tree.insert('1234', 1234, override=True)
+    test_tree.insert('4567', 4567, override=True)
+    test_tree.insert('6789', 6789, override=True)
+    assert test_tree['1234'] == 1234
+    assert test_tree['4567'] == 4567
+    assert test_tree['6789'] == 6789
+
+
 if __name__ == '__main__':
-    # test_scale_insert()
-    test_normal_insert()
-    test_insert_float()
-    test_insert_dict()
-    test_insert_list()
+    test_overflow()
