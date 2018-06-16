@@ -1,9 +1,10 @@
 import random
+from tests.util import refine_test_file
 
 from cannondb.btree import BTree
 
 TEST_RANDOM_NUMS = 100000
-test_file_name = 'tmp/tmp_tree'
+test_file_name = refine_test_file('test_tree')
 
 
 def test_normal_insert():

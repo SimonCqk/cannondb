@@ -10,7 +10,7 @@ from cannondb.serializer import serializer_switcher, type_switcher
 @functools.total_ordering
 class KeyValPair(metaclass=ABCMeta):
     """
-    Unit stores a pair of _key-_value, switch its serializer automatically by its type.
+    Unit stores a pair of key-value, switch its serializer automatically by its type.
     """
     __slots__ = ('_key', '_value', 'length', 'tree_conf', 'key_ser', 'val_ser', '_dumped')
 
@@ -372,7 +372,9 @@ class BNode(BaseBNode):
         return bytes(self._dumped)
 
     def re_dump(self):
-        """Intent to update self._dumped forcibly"""
+        """
+        Intent to update self._dumped forcibly, only call by BNode instances.
+        """
         self._dump()
 
     def _adjust_overflow_chain(self, data: bytearray, header_len: int):
@@ -590,7 +592,7 @@ class BNode(BaseBNode):
 
     def shrink(self, ancestors: list):
         """
-        shrink from current node up to the root until tree is balanced.
+        shrink from current node up to the root until test_tree is balanced.
         :param ancestors: ancestors from root to current node
         """
         parent = None
@@ -650,7 +652,7 @@ class BNode(BaseBNode):
 
     def grow(self, ancestors: list):
         """
-        grow from current node up to the root until tree is balanced,
+        grow from current node up to the root until test_tree is balanced,
         by trying borrowing items from siblings or consolidate with siblings.
         :param ancestors: ancestors from root to current node
         """

@@ -54,8 +54,8 @@ METHODS_TO_LOG = (
 )
 
 TreeConf = namedtuple('TreeConf', [
-    'order',  # order of B tree
-    'page_size',  # Size of a page within the tree in bytes
+    'order',  # order of B test_tree
+    'page_size',  # Size of a page within the test_tree in bytes
     'key_size',  # Maximum size of a _key in bytes
     'value_size',  # Maximum size of a _value in bytes
 ])

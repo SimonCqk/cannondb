@@ -30,7 +30,7 @@ class BTree(object):
             with self.handler.read_transaction:
                 meta_root_page, meta_tree_conf = self.handler.get_meta_tree_conf()
         except ValueError:
-            #  init empty tree
+            #  init empty test_tree
             with self.handler.write_transaction:
                 self._root = self._bottom = self.LEAF(self, self._tree_conf)
                 self.handler.ensure_root_block(self._root)
@@ -65,7 +65,7 @@ class BTree(object):
     @staticmethod
     def _present(key, ancestors) -> bool:
         """
-        judge is _key exist in this tree.
+        judge is _key exist in this test_tree.
         """
         last, index = ancestors[-1]
         return index < len(last.contents) and last.contents[index].key == key
@@ -145,7 +145,7 @@ class BTree(object):
 
     def get(self, key, default=None):
         """
-        :param key: key expected to be searched in the tree.
+        :param key: key expected to be searched in the test_tree.
         :param default: if key doesn't exist, return default.
         :return: _value corresponding to the key if key exists.
         """
@@ -183,7 +183,7 @@ class BTree(object):
 
     def __iter__(self):
         """
-        support iterate B tree by yielding a _key-_value pair each time
+        support iterate B test_tree by yielding a _key-_value pair each time
         """
 
         def _recurse(node):
@@ -245,7 +245,7 @@ class BTree(object):
 
     @order.setter
     def order(self, value):
-        raise RuntimeError('order of b-tree is read only')
+        raise RuntimeError('order of b-test_tree is read only')
 
     @property
     def min_elements(self):
