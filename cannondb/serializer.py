@@ -1,7 +1,6 @@
 import json
 import struct
 from abc import ABCMeta
-from typing import Union, Type
 from uuid import UUID
 
 from cannondb.constants import INT_FORMAT, FLOAT_FORMAT
@@ -77,7 +76,16 @@ class DictSerializer(Serializer):
 
 
 # both list and tuple are supported, but elements can only be json types.
-ListSerializer = DictSerializer
+class ListSerializer(Serializer):
+    __slots__ = []
+
+    @staticmethod
+    def serialize(obj: [list, tuple]) -> bytes:
+        return json.dumps(obj, ensure_ascii=False).encode(encoding='utf-8')
+
+    @staticmethod
+    def deserialize(data: bytes) -> [list, tuple]:
+        return json.loads(data.decode(encoding='utf-8'))
 
 
 class UUIDSerializer(Serializer):
@@ -114,7 +122,7 @@ type_num_map = {
 type_num_map.update(dict(zip(type_num_map.values(), type_num_map.keys())))
 
 
-def serializer_switcher(t: Type[Union[int, float, str, dict, list, UUID]]) -> Serializer:
+def serializer_switcher(t: [int, float, str, dict, list, UUID]) -> Serializer:
     """return corresponding serializer to arg type"""
     try:
         return serializer_map[t]

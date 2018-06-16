@@ -1,5 +1,4 @@
 """
-- Storage: Abstract base class for all storage implementation.
 - FileStorage: Store data into disk.
 - MemoryStorage: Store data into memory.
 """
@@ -39,6 +38,15 @@ class MemoryStorage(object):
 
     def get(self, key, default=None):
         return self._memory.get(key, default=default)
+
+    def __getitem__(self, item):
+        return self._memory.__getitem__(item)
+
+    def __setitem__(self, key, value):
+        return self._memory.__setitem__(key, value)
+
+    def __len__(self):
+        return len(self._memory)
 
     def keys(self):
         return self._memory.keys()
