@@ -2,7 +2,6 @@ import random
 from tests.util import refine_test_file
 
 from cannondb.btree import BTree
-from cannondb.constants import TreeConf
 
 TEST_RANDOM_NUMS = 100000
 test_file_name = refine_test_file('test_tree')

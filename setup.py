@@ -38,7 +38,8 @@ setup(
     long_description_content_type='text/markdown',
     install_requires=[
         'rwlock',
-        'pytest'
+        'pytest',
+        'redis'
     ],
     platforms='any',
     python_requires=">=3.5",

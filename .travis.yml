@@ -9,6 +9,7 @@ python:
 before_install:
   - pip install rwlock
   - pip install pytest
+  - pip install redis
 
 install:
   - pip install coveralls
