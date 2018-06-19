@@ -15,9 +15,12 @@ class TestWrapper(object):
         self._a = a
 
 
-test = TestWrapper(0)
-mtl = ('add', 'decrease')
-test = log_wrapper(test, mtl)
-test.add(1)
-test.add(2)
-test.decrease(3)
+if __name__ == '__main__':
+    test = TestWrapper(0)
+    mtl = ('add', 'decrease')
+    test = log_wrapper(test, mtl)
+    test.add(1)
+    test.add(2)
+    test.decrease(3)
+    test.reset(0)
+    # check the log file

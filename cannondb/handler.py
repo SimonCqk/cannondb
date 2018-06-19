@@ -17,7 +17,7 @@ logger = logging.getLogger(DEFAULT_LOGGER_NAME)
 
 class FileHandler(object):
     """
-    Handling-layer between B tree engine and underlying db file
+    Handling-layer between B test_tree engine and underlying db file
     """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_wal', '_lock',
                  'last_page', '_page_GC', '_auto_commit')
@@ -116,7 +116,10 @@ class FileHandler(object):
         """
         if dep_page in self._cache:  # remove deprecated node in cache
             del self._cache[dep_page]
-        self._wal.set_page_deprecated(dep_page, dep_page_data)
+        # when auto_commit closed, WAL won't record uncommitted_pages,
+        # so deprecated pages only maintained in memory.
+        if self._auto_commit:
+            self._wal.set_page_deprecated(dep_page, dep_page_data)
 
     def _takeout_deprecated_page(self):
         """if GC has more than one page, take out smallest one"""
@@ -126,7 +129,7 @@ class FileHandler(object):
 
     def set_meta_tree_conf(self, root_page: int, tree_conf: TreeConf):
         """
-        set current tree configuration into db file, recorded by first page.
+        set current test_tree configuration into db file, recorded by first page.
         file sync is necessary.
         """
         self._tree_conf = tree_conf
@@ -143,12 +146,12 @@ class FileHandler(object):
 
     def get_meta_tree_conf(self) -> tuple:
         """
-        read former recorded tree configuration from db file, first page
+        read former recorded test_tree configuration from db file, first page
         """
         try:
             data = self._read_page_data(0)
         except EndOfFileError:
-            raise ValueError('Meta tree configure overflow_data has not set yet')
+            raise ValueError('Meta test_tree configure overflow_data has not set yet')
         root_page = int.from_bytes(data[0:PAGE_ADDRESS_LIMIT], ENDIAN)
         order_end = PAGE_ADDRESS_LIMIT + 1
         order = int.from_bytes(data[PAGE_ADDRESS_LIMIT:order_end], ENDIAN)
@@ -267,7 +270,7 @@ class WAL:
             self._load_wal()
 
     def checkpoint(self):
-        """Transfer the modified data back to the tree and close the WAL."""
+        """Transfer the modified data back to the test_tree and close the WAL."""
         if self._not_committed_pages:
             logger.warning('Closing WAL with uncommitted data, discarding it')
 
@@ -367,7 +370,6 @@ class WAL:
         del self._committed_pages[dep_page]
 
     def get_page(self, page: int) -> bytes:
-        page_start = None
         for store in (self._not_committed_pages, self._committed_pages):
             page_start = store.get(page)
             if page_start:

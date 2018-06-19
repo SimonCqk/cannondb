@@ -19,7 +19,7 @@ class CannonDB(with_metaclass(ABCMeta)):
         """
         :param file_name: database file name (only used by file storage)
         :param cache_size: cache
-        :param order: order setting of underlying B tree (only used by file storage)
+        :param order: order setting of underlying B test_tree (only used by file storage)
         :param page_size: maximum page size in each file, file is split into pages. (only used by file storage)
         :param key_size: maximum _key size limitation (only used by file storage)
         :param value_size: maximum _value size limitation (only used by file storage)
