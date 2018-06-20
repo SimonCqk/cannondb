@@ -15,10 +15,10 @@ CannonDB
 ### Features
 
 - maintained by a on-disk B tree, so insert/get/remove is fast enough.
-- str/int/float/dict/list/UUID types of key/value are supported.
-- storage data in file defaulted, but storage in memory is also supported. 
-- flexible parameter (db name/ page size/ key size/ value size /cache size) configuration to satisfy your demand.
-- use WAL (write-logging ahead) technique to provide strong safety guarantee.
+- `str/int/float/dict/list/UUID` types of key/value are supported.
+- store data in file defaulted, but store in memory is also supported. 
+- flexible parameter settings(db name/ page size/ key size/ value size /cache size) configuration to satisfy your demand.
+- use WAL (write-ahead logging) technique to provide strong safety guarantee.
 
 ### Performance
 
@@ -123,5 +123,5 @@ db = cannondb.connect(log='tcp', host='127.0.0.1', port=2048)
 
 ### TODO
 
-- refactor all I/O operations into `async` model.
-- complete wrappers to enhance functions of database.
+- refactor some I/O operations into async model.
+- support networking requests(client/server).

@@ -1,9 +1,27 @@
 import os
 import subprocess
+import time
 
 
 class RedisNotLaunchedError(Exception):
     pass
+
+
+def redis_manual_launcher():
+    """
+    if redis-server has launched, just return, else run launch cmd
+    manually in shell.
+    """
+    if not has_redis_launched():
+        # os.system() will block the whole program, so avoid to use it.
+        subprocess.Popen('redis-server', shell=True, stdout=subprocess.PIPE)
+        '''
+        guarantee the server has started, since "Popen" execute cmd asynchronously,
+        I'm not sure if sleep is necessary.
+        '''
+        time.sleep(0.001)
+        if not has_redis_launched():
+            raise RedisNotLaunchedError('redis server cannot launch properly, please check the configuration')
 
 
 def has_redis_launched() -> bool:
@@ -24,20 +42,3 @@ def has_redis_launched() -> bool:
         if 'redis-ser' in row:
             return True
     return False
-
-
-def redis_manual_launcher():
-    """
-    if redis-server has launched, just return, else run launch cmd
-    manually in shell.
-    """
-    if not has_redis_launched():
-        # os.system() will block the whole program, so avoid to use it.
-        subprocess.Popen('redis-server', shell=True, stdout=subprocess.PIPE)
-        '''
-        guarantee the server has started, since "Popen" execute cmd asynchronously,
-        I'm not sure if sleep is necessary.
-        '''
-        # time.sleep(0.1)
-        if not has_redis_launched():
-            raise RedisNotLaunchedError('redis server cannot launch properly, please check the configuration')
