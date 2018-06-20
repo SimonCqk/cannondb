@@ -61,6 +61,9 @@ class DistributedSemaphore:
     Unlike Distributed Lock, it provides scalability with the amount of hosts-concurrent-request,
     """
     SEM_VAL_LIMIT = DEFAULT_SEM_VAL
+    # in 32 bit platform, redis-int type ranges up to 2^31-1, so for insurance we'd recycle
+    # the counter.
+    COUNTER_MOD = pow(2, 31)
 
     def __init__(self, name, sem_val: int = None):
         self._name = name
@@ -90,9 +93,9 @@ class DistributedSemaphore:
         pipe.zremrangebyscore(self._name, '-inf', now - timeout)
         pipe.zinterstore(self._set_name, [self._set_name, self._name])
 
-        pipe.zincrby(self._counter_name)
+        pipe.incr(self._counter_name)
         # update counter value and get it
-        counter = pipe.execute()[-1]
+        counter = pipe.execute()[-1] % self.COUNTER_MOD
         # attempt to acquire semaphore
         pipe.zadd(self._name, self._id, now)
         pipe.zadd(self._set_name, self._id, counter)
@@ -100,7 +103,18 @@ class DistributedSemaphore:
         pipe.zrank(self._set_name, self._id)
         if pipe.execute()[-1] < self.SEM_VAL_LIMIT:
             return True
-        # TODO: complete
+        # client failed to acquire, undo ops
+        pipe.zrem(self._name, self._id)
+        pipe.zrem(self._set_name, self._id)
+        pipe.execute()
+        return False
 
-    def release(self):
-        pass
+    def release(self, conn: redis.Redis) -> bool:
+        """
+        :return: True: release semaphore properly
+                 False: semaphore has been removed because of expired
+        """
+        pipe = conn.pipeline(True)
+        pipe.zrem(self._name, self._id)
+        pipe.zrem(self._set_name, self._id)
+        return pipe.execute()[0]
