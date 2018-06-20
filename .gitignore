@@ -162,4 +162,8 @@ crashlytics-build.properties
 fabric.properties
 
 # CannonDB default suffix
-*.cbd
+*.cdb
+*.rdb
+tmp/*
+*/tmp
+

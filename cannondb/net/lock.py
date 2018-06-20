@@ -5,6 +5,7 @@ read/write requests concurrently, so we have to take steps to avoid contention.
 import redis
 import uuid
 import time
+import math
 from cannondb.net.utils import redis_manual_launcher
 
 
@@ -13,12 +14,21 @@ class DistributedLock:
         redis_manual_launcher()
 
     @staticmethod
-    def acquire(conn: redis.Connection(), lock_name: str, timeout=10):
-        identifier = str(uuid.uuid4())  # generate a random UUID as mutex
-        end = time.time() + timeout
+    def acquire(conn: redis.Connection(), lock_name: str, acquire_timeout=2, lock_timeout=5):
+        identifier = str(uuid.uuid4())  # generate a 128 bits random UUID as mutex
+        end = time.time() + acquire_timeout
+        lock_timeout = int(math.ceil(lock_timeout))
         while time.time() < end:
-            if conn.setnx('lock:' + lock_name, identifier):
+            """
+            'ex': set expire time
+            'nx': set only if key not exists
+            """
+            if conn.set(lock_name, identifier, ex=lock_timeout, nx=True):
                 return identifier
+            elif not conn.ttl(lock_name):
+                # check the expire time and update it if needed
+                conn.expire(lock_name, lock_timeout)
+            time.sleep(0.001)  # wait for 1ms
         # timeout and acquire failed
         return False
 
