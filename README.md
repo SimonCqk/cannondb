@@ -123,5 +123,5 @@ db = cannondb.connect(log='tcp', host='127.0.0.1', port=2048)
 
 ### TODO
 
-- refactor all I/O operations into `async` model.
-- complete wrappers to enhance functions of database.
+- refactor some I/O operations into async model.
+- support networking requests(client/server).
