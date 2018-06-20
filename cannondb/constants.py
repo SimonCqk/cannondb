@@ -3,7 +3,8 @@ from collections import namedtuple
 __all__ = ['PAGE_ADDRESS_LIMIT', 'PAGE_LENGTH_LIMIT', 'PAGE_ADDRESS_FORMAT', 'ENDIAN', 'KEY_LENGTH_LIMIT',
            'KEY_LENGTH_FORMAT', 'VALUE_LENGTH_FORMAT', 'VALUE_LENGTH_LIMIT', 'NODE_TYPE_LENGTH_LIMIT',
            'SERIALIZER_TYPE_LENGTH_LIMIT', 'NODE_CONTENTS_LENGTH_LIMIT', 'INT_FORMAT', 'FLOAT_FORMAT',
-           'FRAME_TYPE_LENGTH_LIMIT', 'DEFAULT_LOGGER_NAME', 'METHODS_TO_LOG', 'TreeConf', 'DEFAULT_CHECKPOINT_SECONDS']
+           'FRAME_TYPE_LENGTH_LIMIT', 'DEFAULT_LOGGER_NAME', 'METHODS_TO_LOG', 'TreeConf', 'DEFAULT_CHECKPOINT_SECONDS',
+           'DEFAULT_SEM_VAL']
 
 # network (= big-endian)
 ENDIAN = 'big'
@@ -41,6 +42,10 @@ FLOAT_FORMAT = '!f'
 
 # default seconds to do checkpoint
 DEFAULT_CHECKPOINT_SECONDS = 120
+
+# default limitation of the amount of concurrent requesting from host(client)
+# to server, used in Distributed Semaphore.
+DEFAULT_SEM_VAL = 5
 
 DEFAULT_LOGGER_NAME = 'Logger'
 
