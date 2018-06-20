@@ -66,9 +66,9 @@ class DistributedSemaphore:
     COUNTER_MOD = pow(2, 31)
 
     def __init__(self, name, sem_val: int = None):
-        self._name = name
-        self._set_name = name + ':owner'  # owners of this semaphore
-        self._counter_name = name + ':counter'  # counter of this semaphore
+        self._name ='semaphore:' + name
+        self._set_name =self._name + ':owner'  # owners of this semaphore
+        self._counter_name = self._name + ':counter'  # counter of this semaphore
         self._id = str(uuid.uuid4())  # generate a 128 bits random UUID as identifier
         if sem_val:
             self.SEM_VAL_LIMIT = sem_val
@@ -118,3 +118,11 @@ class DistributedSemaphore:
         pipe.zrem(self._name, self._id)
         pipe.zrem(self._set_name, self._id)
         return pipe.execute()[0]
+    def refresh(self,conn:redis.Redis)->bool:
+        """refresh semaphore to reset timeout"""
+        # if ZADD return  1, which means new timestamp added, the client
+        # has lost this semaphore, else client still holds it.
+        if conn.zadd(self._name,self._id,time.time()):
+            self.release(conn)
+            return False
+        return True
