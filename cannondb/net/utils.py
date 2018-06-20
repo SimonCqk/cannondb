@@ -35,8 +35,8 @@ def redis_manual_launcher():
         # os.system() will block the whole program, so avoid to use it.
         subprocess.Popen('redis-server', shell=True, stdout=subprocess.PIPE)
         '''
-        guarantee the server has started, since Popen execute cmd asynchronously,
-        I'm not sure if it's necessary.
+        guarantee the server has started, since "Popen" execute cmd asynchronously,
+        I'm not sure if sleep is necessary.
         '''
         # time.sleep(0.1)
         if not has_redis_launched():
