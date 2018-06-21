@@ -19,7 +19,7 @@ class DistributedLock:
         self._id = str(uuid.uuid4())  # generate a 128 bits random UUID as identifier
         redis_manual_launcher()
 
-    def acquire(self, conn: redis.Redis, acquire_timeout=2, lock_timeout=5) -> bool:
+    def acquire(self, conn: redis.Redis, acquire_timeout=2.0, lock_timeout=5.0) -> bool:
         end = time.time() + acquire_timeout
         lock_timeout = int(math.ceil(lock_timeout))
         while time.time() < end:
@@ -66,10 +66,11 @@ class DistributedSemaphore:
     COUNTER_MOD = pow(2, 31)
 
     def __init__(self, name, sem_val: int = None):
-        self._name ='semaphore:' + name
-        self._set_name =self._name + ':owner'  # owners of this semaphore
+        self._name = 'semaphore:' + name
+        self._set_name = self._name + ':owner'  # owners of this semaphore
         self._counter_name = self._name + ':counter'  # counter of this semaphore
         self._id = str(uuid.uuid4())  # generate a 128 bits random UUID as identifier
+        self._lock = DistributedLock(self._name)
         if sem_val:
             self.SEM_VAL_LIMIT = sem_val
         redis_manual_launcher()
@@ -83,10 +84,41 @@ class DistributedSemaphore:
         raise RuntimeError('The value of distributed semaphore is read-only')
 
     """
-    This impl of semaphore has considered the time-sync of different hosts, so forget about unfair issues.
+    This impl of semaphore-acquisition ignore the fact that the timestamp of different process may 
+    differ, but it runs fast and simple enough. 
     """
 
-    def acquire(self, conn: redis.Redis, timeout=5) -> bool:
+    def fast_acquire(self, conn: redis.Redis, timeout=5.0):
+        now = time.time()
+
+        pipe = conn.pipeline(True)
+        # remove all expired semaphore
+        pipe.zremrangebyscore(self._name, '-inf', now - timeout)
+        # attempt to acquire semaphore
+        pipe.zadd(self._name, self._id, now)
+        # check the ranking
+        pipe.zrank(self._name, self._id)
+        if pipe.execute()[-1] < self.SEM_VAL_LIMIT:
+            return True
+        # client failed to acquire, undo ops
+        conn.zrem(self._name, self._id)
+        return False
+
+    """
+    These implementations of semaphore-acquisition has considered the time-sync of different hosts, 
+    so forget about unfair issues.
+    """
+
+    def acquire_with_lock(self, conn: redis.Redis, timeout=5.0) -> bool:
+        lock_res = self._lock.acquire(conn, acquire_timeout=0.01)
+        if lock_res:
+            try:
+                return self.acquire_without_lock(conn, timeout)
+            finally:
+                self._lock.release(conn)
+        return False
+
+    def acquire_without_lock(self, conn: redis.Redis, timeout=5.0) -> bool:
         now = time.time()
         pipe = conn.pipeline(True)
         # remove all expired semaphore
@@ -118,11 +150,12 @@ class DistributedSemaphore:
         pipe.zrem(self._name, self._id)
         pipe.zrem(self._set_name, self._id)
         return pipe.execute()[0]
-    def refresh(self,conn:redis.Redis)->bool:
-        """refresh semaphore to reset timeout"""
-        # if ZADD return  1, which means new timestamp added, the client
+
+    def refresh(self, conn: redis.Redis) -> bool:
+        """refresh semaphore so as to reset timeout"""
+        # if `ZADD` return 1(new timestamp added successfully),  which means the client
         # has lost this semaphore, else client still holds it.
-        if conn.zadd(self._name,self._id,time.time()):
+        if conn.zadd(self._name, self._id, time.time()):
             self.release(conn)
             return False
         return True
