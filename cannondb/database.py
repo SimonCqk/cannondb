@@ -87,16 +87,24 @@ class CannonDB(with_metaclass(ABCMeta)):
             self.checkpoint()
 
     def checkpoint(self):
-        """manually perform checkpoint"""
+        """Manually perform checkpoint"""
         self._storage.checkpoint()
 
     def commit(self):
+        """Commit all changes and let database do persistence."""
         self._storage.commit()
 
     def set_auto_commit(self, auto: bool):
+        """
+        :param auto: True: db will commit when open a transaction every time.
+                     False: commit util user manually call .commit(), for boosting performance.
+        """
         self._storage.set_auto_commit(auto)
 
     def close(self):
+        """
+        Close the database and exit safely.
+        """
         if hasattr(self, '_logger'):
             self._logger.close()
         self._storage.close()
@@ -109,8 +117,12 @@ class CannonDB(with_metaclass(ABCMeta)):
 
     @property
     def size(self):
+        """Number of total key-value pairs."""
         return len(self._storage)
 
+    """
+    Magic methods defined to expand flexibility and ease of use.
+    """
     def __contains__(self, item):
         return self._storage.__contains__(item)
 

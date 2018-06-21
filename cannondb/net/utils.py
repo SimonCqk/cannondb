@@ -9,7 +9,7 @@ class RedisNotLaunchedError(Exception):
 
 def redis_manual_launcher():
     """
-    if redis-server has launched, just return, else run launch cmd
+    If redis-server has launched, just return, else run launch cmd
     manually in shell.
     """
     if not has_redis_launched():
@@ -26,7 +26,7 @@ def redis_manual_launcher():
 
 def has_redis_launched() -> bool:
     """
-    check if redis-server has launched on this host
+    Check if redis-server has launched on this host
     """
     # check the owner of port 6379
     output = os.popen('lsof -i:6379').read()

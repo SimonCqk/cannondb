@@ -17,7 +17,8 @@ logger = logging.getLogger(DEFAULT_LOGGER_NAME)
 
 class FileHandler(object):
     """
-    Handling-layer between B test_tree engine and underlying db file
+    Handling-layer between B tree engine and underlying db file. And it controls
+    the organization of data in real file.
     """
     __slots__ = ('_filename', '_tree_conf', '_cache', '_fd', '_wal', '_lock',
                  'last_page', '_page_GC', '_auto_commit')
@@ -45,6 +46,11 @@ class FileHandler(object):
 
     @property
     def write_transaction(self):
+        """
+        Simulation of write transaction, implemented by write lock.
+        Only one writer is permitted to operate db at one time, if no emergency happens
+        during writing, commit after it(if `auto_commit` is True), else do rollback.
+        """
         class WriteTransaction:
             def __enter__(_self):
                 self._lock.writer_lock.acquire()
@@ -65,6 +71,10 @@ class FileHandler(object):
 
     @property
     def read_transaction(self):
+        """
+        Simulation of write transaction, implemented by read lock.
+        Multi-readers are absolutely safe so no more measurements are required.
+        """
         class ReadTransaction:
             def __enter__(_self):
                 self._lock.reader_lock.acquire()
@@ -79,7 +89,7 @@ class FileHandler(object):
 
     def _read_page_data(self, page: int) -> bytes:
         """
-        read No.page overflow_data from db file
+        Read No.page raw binary data from db file
         """
         page_start = page * self._tree_conf.page_size
         data = read_from_file(self._fd, page_start,
@@ -88,8 +98,8 @@ class FileHandler(object):
 
     def _write_page_data(self, page: int, page_data: bytes, f_sync=False):
         """
-        write page overflow_data to position No.page in db file, call system sync if specified f_sync,
-        but sync is an expensive operation.
+        Write page raw data to position of No.page in db file, call system-call `syn`c if
+        specified `f_sync`, but sync is an expensive operation.
         """
         assert len(page_data) == self._tree_conf.page_size, 'length of page data does not match page size'
         page_start = page * self._tree_conf.page_size
@@ -97,7 +107,7 @@ class FileHandler(object):
         write_to_file(self._fd, page_data, f_sync=f_sync)
 
     def _load_page_gc(self):
-        """load all deprecated pages used before"""
+        """Load all deprecated pages used before into memory."""
         for offset in range(1, self.last_page):
             page_start = offset * self._tree_conf.page_size
             page_type = read_from_file(self._fd, page_start, page_start + NODE_TYPE_LENGTH_LIMIT)
@@ -105,12 +115,12 @@ class FileHandler(object):
                 yield offset
 
     def collect_deprecated_page(self, page: int):
-        """add new deprecated page to GC, smaller first"""
+        """Add new deprecated page to GC, smaller first"""
         bisect.insort_left(self._page_GC, page)
 
     def set_deprecated_data(self, dep_page: int, dep_page_data: bytes):
         """
-        set page as deprecated in db file
+        Set page as deprecated in db file
         :param dep_page: page to be set as deprecated
         :param dep_page_data: only deprecated type as bytes is required
         """
@@ -122,15 +132,15 @@ class FileHandler(object):
             self._wal.set_page_deprecated(dep_page, dep_page_data)
 
     def _takeout_deprecated_page(self):
-        """if GC has more than one page, take out smallest one"""
+        """If GC has more than one page, take out the smallest one"""
         if self._page_GC:
             return self._page_GC.pop(0)
         return None
 
     def set_meta_tree_conf(self, root_page: int, tree_conf: TreeConf):
         """
-        set current test_tree configuration into db file, recorded by first page.
-        file sync is necessary.
+        Set current tree configuration into db file, recorded by first page.
+        File-sync is necessary.
         """
         self._tree_conf = tree_conf
         length = PAGE_ADDRESS_LIMIT + 1 + PAGE_LENGTH_LIMIT + KEY_LENGTH_LIMIT + VALUE_LENGTH_LIMIT
@@ -146,7 +156,7 @@ class FileHandler(object):
 
     def get_meta_tree_conf(self) -> tuple:
         """
-        read former recorded test_tree configuration from db file, first page
+        Read former recorded tree configuration from db file, as first page's data.
         """
         try:
             data = self._read_page_data(0)
@@ -167,6 +177,10 @@ class FileHandler(object):
         return root_page, self._tree_conf
 
     def perform_checkpoint(self, reopen_wal=False):
+        """
+        Check(sign up) all committed data before this time point and move them into
+        real database file, this is a unmodifiable operation.
+        """
         with self.write_transaction:
             logger.info('Performing checkpoint of {name}'.format(name=self._filename))
             for page, page_data in self._wal.checkpoint():
@@ -178,7 +192,7 @@ class FileHandler(object):
 
     @property
     def next_available_page(self) -> int:
-        """try get one page from page GC (deprecated pages), else get by increase total pages"""
+        """Try to get one page from page GC (deprecated pages), else get by increase total pages"""
         dep_page = self._takeout_deprecated_page()
         if dep_page:
             return dep_page
@@ -188,14 +202,14 @@ class FileHandler(object):
 
     def set_node(self, node: Union[BNode, OverflowNode]):
         """
-        add & update node overflow_data into db file and also add to cache
+        Ddd & update node dumped data into db file and also update the cache.
         """
         self._wal.set_page(node.page, node.dump())
         self._cache[node.page] = node
 
     def get_node(self, page: int, tree):
         """
-        try get node from cache to avoid IO op, if not exist, read and load from db file
+        Try to get node from cache to avoid extra IO op, if not exist, read and load from db file.
         """
         node = self._cache.get(page)
         if node:
@@ -210,20 +224,21 @@ class FileHandler(object):
         return node
 
     def ensure_root_block(self, root: BNode):
-        """sync root node information with both memory and disk"""
+        """Sync current root node information with both memory and disk"""
         self.set_node(root)
         self.set_meta_tree_conf(root.page, root.tree_conf)
         self.commit()
 
     def commit(self):
-        """sync uncommitted changes with db file"""
+        """Sync uncommitted changes with db file"""
         self._wal.commit()
 
     def rollback(self):
+        """Rollback all uncommitted pages."""
         self._wal.rollback()
 
     def flush(self):
-        """flush uncommitted changes to db file and clear the cache"""
+        """Flush uncommitted changes to db file and clear the cache"""
         # can not just iterate cache, because during iterating,
         # cache will do refresh and size of cache changed at run time.
         with self.write_transaction:
@@ -236,6 +251,9 @@ class FileHandler(object):
             self.perform_checkpoint(reopen_wal=True)
 
     def close(self):
+        """
+        Close file handler, usually invoked when database closes.
+        """
         self.perform_checkpoint()
         self._fd.close()
         self._cache.clear()
@@ -248,6 +266,11 @@ class FrameType(enum.Enum):
 
 
 class WAL:
+    """
+    Handler of write-ahead logging technique. WAL used to add a protective layer for data when
+    some emergency happens during transaction. WAL provides an measurement to recover the lost data
+    next time user open the same database.
+    """
     __slots__ = ('filename', '_fd', '_page_size', '_committed_pages', '_not_committed_pages', 'needs_recovery')
 
     FRAME_HEADER_LENGTH = FRAME_TYPE_LENGTH_LIMIT + PAGE_ADDRESS_LIMIT
@@ -288,12 +311,13 @@ class WAL:
         os.unlink(self.filename + '.cdb.wal')
 
     def _create_header(self):
+        """Header of wal file contains basic information of db config."""
         data = self._page_size.to_bytes(PAGE_LENGTH_LIMIT, ENDIAN)
         self._fd.seek(0)
         write_to_file(self._fd, data, f_sync=True)
 
     def _load_wal(self):
-        """load previous WAL generated when B Tree closed accidentally."""
+        """Load previous WAL generated when B Tree closed accidentally."""
         self._fd.seek(0)
         header_data = read_from_file(self._fd, 0, PAGE_LENGTH_LIMIT)
         assert int.from_bytes(header_data, ENDIAN) == self._page_size
@@ -307,6 +331,9 @@ class WAL:
             logger.warning('WAL has uncommitted data, discarding it')
             self._not_committed_pages = dict()
 
+    """
+    Data in wal file is organized by frame, so operate wal file equals to operate frames.
+    """
     def _load_next_frame(self):
         start = self._fd.tell()
         stop = start + self.FRAME_HEADER_LENGTH
@@ -385,12 +412,12 @@ class WAL:
         self._add_frame(FrameType.PAGE, page, page_data)
 
     def commit(self):
-        # Commit is a no-op when there is no uncommitted pages
+        """Commit is a no-op when there is no uncommitted pages"""
         if self._not_committed_pages:
             self._add_frame(FrameType.COMMIT)
 
     def rollback(self):
-        # Rollback is a no-op when there is no uncommitted pages
+        """Rollback is a no-op when there is no uncommitted pages"""
         if self._not_committed_pages:
             self._add_frame(FrameType.ROLLBACK)
 
