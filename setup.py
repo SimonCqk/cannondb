@@ -39,7 +39,8 @@ setup(
     install_requires=[
         'rwlock',
         'pytest',
-        'redis'
+        'redis',
+        'rsa'
     ],
     platforms='any',
     python_requires=">=3.5",
