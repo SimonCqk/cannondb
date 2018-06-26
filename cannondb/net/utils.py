@@ -10,6 +10,10 @@ class RedisNotLaunchedError(Exception):
     pass
 
 
+class AESKeyNotPermit(PermissionError):
+    pass
+
+
 def redis_manual_launcher():
     """
     If redis-server has launched, just return, else run launch cmd
@@ -73,14 +77,25 @@ class AESCipher:
     def decrypt(self, encoded):
         return self.__aes_un_padding(self.cipher.decrypt(encoded))
 
+    def transmit_key_to_client(self, cli):
+        """
+        Since the most important part of AES is the key, and we shall never just exposed key to
+        a casual function invoker, so we'd guarantee the key transmit to the exact client or its
+        proxy.
+        """
+        from cannondb.net.proxy import ClientProxy
+        if not isinstance(cli, ClientProxy):
+            raise AESKeyNotPermit('key should only be transmitted to client or its proxy.')
+        cli.get_key_from_cipher(self._key)
+
     @staticmethod
     def _key_generator() -> str:
-        """Generate a stable length key string"""
+        """Generate a stable length(set by AES_KEY_LEN) key string"""
         chars = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789'
-        chars_len = len(chars) - 1
+        chars_len = len(chars)
         s = ''
         for i in range(AES_KEY_LEN):
-            s += chars[random.randrange(0, chars_len)]
+            s += chars[random.randrange(0, chars_len - 1)]
         return s
 
     @staticmethod
