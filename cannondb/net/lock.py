@@ -90,7 +90,6 @@ class DistributedSemaphore:
 
     def fast_acquire(self, conn: redis.Redis, timeout=5.0):
         now = time.time()
-
         pipe = conn.pipeline(True)
         # remove all expired semaphore
         pipe.zremrangebyscore(self._name, '-inf', now - timeout)
@@ -107,6 +106,9 @@ class DistributedSemaphore:
     """
     These implementations of semaphore-acquisition has considered the time-sync of different hosts, 
     so forget about unfair issues.
+    - acquire_with_lock() avoid contentions and make acquisition absolutely act right, while
+      acquire_without_lock() may cause racing under some situation, I do advise use acquire_with_lock()
+      as it's necessary though little performance lost.
     """
 
     def acquire_with_lock(self, conn: redis.Redis, timeout=5.0) -> bool:

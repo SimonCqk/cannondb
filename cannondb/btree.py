@@ -11,11 +11,17 @@ logger = logging.getLogger(DEFAULT_LOGGER_NAME)
 
 
 class DBNotOpenError(Exception):
-    """raise when trying to do ops but storage was closed"""
+    """Raise when trying to do ops but storage was closed"""
     pass
 
 
 class BTree(object):
+    """
+    Underlying storage engine, a on-disk B-tree. Main body of this tree saved on disk, left some nodes
+    in cache to boost read/write requests. Google it for more details about B-Tree.
+    I choose B Tree rather than B+ Tree because complexity is a big issue, edge cases casually destroy
+    the program. And theoretically, B Tree improve the random read/write efficiency :)
+    """
     __slots__ = ('_file_name', '_order', '_root', '_bottom', '_tree_conf', 'handler', '_closed')
     BRANCH = LEAF = BNode
 
@@ -42,8 +48,8 @@ class BTree(object):
 
     def _path_to(self, key):
         """
-        get the path from root to node which contains _key.
-        :return: list of node-path from root to _key-node.
+        Get the path from root to target-node.
+        :return: list of node-path from root to key-node.
         """
         with self.handler.read_transaction:
             current = self._root
@@ -65,17 +71,17 @@ class BTree(object):
     @staticmethod
     def _present(key, ancestors) -> bool:
         """
-        judge is _key exist in this test_tree.
+        Judge if key exists in this tree.
         """
         last, index = ancestors[-1]
         return index < len(last.contents) and last.contents[index].key == key
 
     def insert(self, key, value, override=False):
         """
-        :param key: _key to be inserted
-        :param value: _value to be inserted corresponding to the _key
-        :param override: if override is true and _key has existed, the new
-                         _value will override the old one.
+        :param key: key to be inserted
+        :param value: value to be set corresponding to the key
+        :param override: if override is true and key has existed, the new
+                         value will override the old one.
         """
         ancestors = self._path_to(key)
         node, index = ancestors[-1]
@@ -97,8 +103,8 @@ class BTree(object):
 
     def multi_insert(self, pairs: Iterable, override=False):
         """
-        insert a batch of _key-_value pair at one time.
-        strongly recommend use multi insert when have a batch of pairs to insert,
+        Insert a batch of key-value pairs at one time.
+        Strongly recommend use multi insert when have a batch of pairs to insert,
         (commit one time) versus (commit n times).
         """
         with self.handler.write_transaction:
@@ -125,6 +131,9 @@ class BTree(object):
         return pairs
 
     def remove(self, key):
+        """
+        Remove target key in database.
+        """
         ancestors = self._path_to(key)
 
         if BTree._present(key, ancestors):
@@ -135,6 +144,9 @@ class BTree(object):
             raise KeyError('{key} not in {self}'.format(key=key, self=self.__class__.__name__))
 
     def _get(self, key):
+        """
+        Internal impl of get(), return target value if key exists, else raise exception.
+        """
         ancestor = self._path_to(key)
         node, index = ancestor[-1]
 
@@ -145,9 +157,9 @@ class BTree(object):
 
     def get(self, key, default=None):
         """
-        :param key: key expected to be searched in the test_tree.
+        :param key: key expected to be searched in the tree.
         :param default: if key doesn't exist, return default.
-        :return: _value corresponding to the key if key exists.
+        :return: value corresponding to the key if key exists.
         """
         try:
             return next(self._get(key))
@@ -155,14 +167,17 @@ class BTree(object):
             return default
 
     def _iteritems(self):
+        """Internal iterator of iteritems()"""
         for item in self:
             yield item
 
     def _iterkeys(self):
+        """Internal iterator of iterkeys()"""
         for pair in self:
             yield pair[0]
 
     def _itervalues(self):
+        """Internal iterator of itervalues()"""
         for pair in self:
             yield pair[1]
 
@@ -176,14 +191,16 @@ class BTree(object):
         return list(self._iteritems())
 
     def commit(self):
+        """Commit all changes and let database do persistence."""
         self.handler.commit()
 
     def __contains__(self, key):
+        """Support for keyword 'in' operator."""
         return BTree._present(key, self._path_to(key))
 
     def __iter__(self):
         """
-        support iterate B test_tree by yielding a _key-_value pair each time
+        Support iterating B tree by yielding a key-value pair each time.
         """
 
         def _recurse(node):
@@ -213,6 +230,7 @@ class BTree(object):
         return '\n'.join(_all)
 
     def __len__(self):
+        """Support for len() built-in function."""
         return len([_ for _ in self])
 
     def __setitem__(self, key, value):
@@ -221,6 +239,9 @@ class BTree(object):
     __getitem__ = get
     __delitem__ = remove
 
+    """
+    __enter__ & __exit__ support for `with...as`(context manager) syntax.
+    """
     def __enter__(self):
         return self
 
@@ -228,15 +249,20 @@ class BTree(object):
         self.close()
 
     def checkpoint(self):
-        """manually perform checkpoint"""
+        """Manually perform checkpoint"""
         self.handler.perform_checkpoint(reopen_wal=True)
 
     def set_auto_commit(self, auto: bool):
+        """
+        :param auto: True: db will commit when open a transaction every time.
+                     False: commit util user manually call .commit(), for boosting performance.
+        """
         logging.info('Set database auto commit {state}.'.format(state='on' if auto else 'off'))
         self.handler._auto_commit = auto
 
     @property
     def next_available_page(self) -> int:
+        """Used for upper layer"""
         return self.handler.next_available_page
 
     @property
@@ -249,6 +275,7 @@ class BTree(object):
 
     @property
     def min_elements(self):
+        """Minimum number of elements in each node."""
         return math.ceil(self.order / 2)
 
     @property
@@ -256,6 +283,9 @@ class BTree(object):
         return not self._closed
 
     def close(self):
+        """
+        Close the database and exit safely.
+        """
         if self._closed:
             return
         with self.handler.write_transaction:

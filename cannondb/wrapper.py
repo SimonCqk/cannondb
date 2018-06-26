@@ -1,12 +1,13 @@
 """
-  This file include storage wrappers to expand the functionality of storage.
-- log_wrapper: Use logs to record all pivotal operations.
+Log wrapper record pivotal operations along with some information into log file. It's just a wrapper
+used like function-wrapper, add small feature although they look flashy...
 """
 import datetime
 import functools
 import logging
 import os
 from logging import handlers as log_handlers
+from platform import system
 
 _log_file_name = 'log.log'
 
@@ -73,7 +74,10 @@ def log_wrapper(cls, methods_to_log: tuple, log_mode='local', host=None, port=No
             host=host, port=port)
     else:
         if not os.path.exists(_log_file_name):
-            open(_log_file_name, 'a').close()
+            if system() == 'Windows':
+                open(_log_file_name, 'a').close()
+            else:
+                os.mknod(_log_file_name)
         handler = logging.FileHandler(_log_file_name, mode='r+')
     logger.addHandler(handler)
 
