@@ -7,7 +7,7 @@ from abc import ABCMeta
 
 from cannondb.constants import DEFAULT_CHECKPOINT_SECONDS
 from cannondb.storages import FileStorage, MemoryStorage
-from cannondb.utils import with_metaclass, LRUCache
+from cannondb.utils import with_metaclass, LRUCache, adjust_to_power_of_2
 
 
 class CannonDB(with_metaclass(ABCMeta)):
@@ -38,10 +38,18 @@ class CannonDB(with_metaclass(ABCMeta)):
         if storage and storage == 'memory':
             self._storage = MemoryStorage(m_process=kwargs.pop('m_process', False))
         else:
-            self._storage = FileStorage(file_name, order, page_size, key_size, value_size, file_cache)
-        self._cache = LRUCache(capacity=cache_size)
+            self._storage = FileStorage(
+                file_name,
+                order,
+                adjust_to_power_of_2(page_size),
+                adjust_to_power_of_2(key_size),
+                adjust_to_power_of_2(value_size),
+                adjust_to_power_of_2(file_cache)
+            )
+        self._cache = LRUCache(capacity=adjust_to_power_of_2(cache_size))
         self._closed = False
-        self._checkpoint_th = threading.Thread(target=self._timing_checkpoint,args=(DEFAULT_CHECKPOINT_SECONDS,)).start()
+        self._checkpoint_th = threading.Thread(target=self._timing_checkpoint,
+                                               args=(DEFAULT_CHECKPOINT_SECONDS,)).start()
 
     def insert(self, key, value, override=False):
         """
@@ -123,6 +131,7 @@ class CannonDB(with_metaclass(ABCMeta)):
     """
     Magic methods defined to expand flexibility and ease of use.
     """
+
     def __contains__(self, item):
         return self._storage.__contains__(item)
 
