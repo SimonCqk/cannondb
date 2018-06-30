@@ -3,7 +3,7 @@ import random
 import subprocess
 import time
 
-from Cryptodome.Cipher import AES
+from Crypto.Cipher import AES
 
 
 class RedisNotLaunchedError(Exception):
@@ -77,7 +77,7 @@ class AESCipher:
     def decrypt(self, encoded):
         return self.__aes_un_padding(self.cipher.decrypt(encoded))
 
-    def transmit_key_to_client(self,  cli):
+    def transmit_key_to_client(self, cli):
         """
         Since the most important part of AES is the key, and we shall never just exposed key to
         a casual function invoker, so we'd guarantee the key transmit to the exact client or its
