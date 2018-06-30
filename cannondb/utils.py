@@ -73,7 +73,7 @@ def is_power_of_2(num: int) -> bool:
 
 def adjust_to_power_of_2(num: int) -> int:
     """
-    For performance, we'd better define the some sizes of data structures or range limitations...
+    In case of performance, we'd better define the some sizes of data structures or range limitations...
     etc, to be the power of 2.
     :param num: number passed in.
     :return: if number is power of 2, just return it, else return the smallest 2 powers which

@@ -95,7 +95,7 @@ class AESCipher:
         chars = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789'
         chars_len = len(chars)
         s = ''
-        for i in range(AES_KEY_LEN):
+        for _ in range(AES_KEY_LEN):
             s += chars[random.randrange(0, chars_len - 1)]
         return s
 
