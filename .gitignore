@@ -166,4 +166,5 @@ fabric.properties
 *.rdb
 tmp/*
 */tmp
-
+.idea/*
+.pytest_cache/*
