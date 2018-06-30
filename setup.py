@@ -40,7 +40,7 @@ setup(
         'rwlock',
         'pytest',
         'redis',
-        'rsa'
+        'pycryptodome'
     ],
     platforms='any',
     python_requires=">=3.5",

@@ -166,4 +166,4 @@ fabric.properties
 *.rdb
 tmp/*
 */tmp
-
+.idea/*
