@@ -167,3 +167,4 @@ fabric.properties
 tmp/*
 */tmp
 .idea/*
+.pytest_cache/*
