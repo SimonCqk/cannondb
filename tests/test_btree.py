@@ -1,4 +1,5 @@
 import random
+
 from tests.util import refine_test_file
 
 from cannondb.btree import BTree
@@ -93,4 +94,4 @@ def test_overflow():
 
 
 if __name__ == '__main__':
-    test_overflow()
+    __test_scale_insert()

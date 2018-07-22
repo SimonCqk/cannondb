@@ -4,7 +4,7 @@ __all__ = ['PAGE_ADDRESS_LIMIT', 'PAGE_LENGTH_LIMIT', 'PAGE_ADDRESS_FORMAT', 'EN
            'KEY_LENGTH_FORMAT', 'VALUE_LENGTH_FORMAT', 'VALUE_LENGTH_LIMIT', 'NODE_TYPE_LENGTH_LIMIT',
            'SERIALIZER_TYPE_LENGTH_LIMIT', 'NODE_CONTENTS_LENGTH_LIMIT', 'INT_FORMAT', 'FLOAT_FORMAT',
            'FRAME_TYPE_LENGTH_LIMIT', 'DEFAULT_LOGGER_NAME', 'METHODS_TO_LOG', 'TreeConf', 'DEFAULT_CHECKPOINT_SECONDS',
-           'DEFAULT_SEM_VAL']
+           'DEFAULT_SEM_VAL','SERVER_PORT']
 
 # network (= big-endian)
 ENDIAN = 'big'
@@ -42,6 +42,16 @@ FLOAT_FORMAT = '!f'
 
 # default seconds to do checkpoint
 DEFAULT_CHECKPOINT_SECONDS = 120
+
+# server listening por
+'''
+ as for: 'c' 'a' 'n' 'n' 'o' 'n'
+          .   .   .   .   .   .
+          .   .   .   .   .   .
+          99  97  110 110 111 110
+       ~=  00 -02  11  11  12  11
+'''
+SERVER_PORT = 21121
 
 # default limitation of the amount of concurrent requesting from host(client)
 # to server, used in Distributed Semaphore.
