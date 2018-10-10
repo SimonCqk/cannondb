@@ -6,7 +6,7 @@ from typing import Iterable
 from cannondb.constants import TreeConf, DEFAULT_LOGGER_NAME
 from cannondb.handler import FileHandler
 from cannondb.node import BNode
-from cannondb.utils import adjust_to_power_of_2
+from cannondb.utils import refine_to_2power
 
 logger = logging.getLogger(DEFAULT_LOGGER_NAME)
 
@@ -29,9 +29,9 @@ class BTree(object):
     def __init__(self, file_name: str = 'database', order=100, page_size: int = 8192, key_size: int = 16,
                  value_size: int = 64, cache_size=1024):
         self._file_name = file_name
-        self._tree_conf = TreeConf(order=order, page_size=adjust_to_power_of_2(page_size),
-                                   key_size=adjust_to_power_of_2(key_size), value_size=adjust_to_power_of_2(value_size))
-        self.handler = FileHandler(file_name, self._tree_conf, cache_size=adjust_to_power_of_2(cache_size))
+        self._tree_conf = TreeConf(order=order, page_size=refine_to_2power(page_size),
+                                   key_size=refine_to_2power(key_size), value_size=refine_to_2power(value_size))
+        self.handler = FileHandler(file_name, self._tree_conf, cache_size=refine_to_2power(cache_size))
         self._order = order
         try:  # create new root or load previous root
             with self.handler.read_transaction:

@@ -71,7 +71,7 @@ def is_power_of_2(num: int) -> bool:
     return (num & (num - 1)) is 0
 
 
-def adjust_to_power_of_2(num: int) -> int:
+def refine_to_2power(num: int) -> int:
     """
     In case of performance, we'd better define the some sizes of data structures or range limitations...
     etc, to be the power of 2.

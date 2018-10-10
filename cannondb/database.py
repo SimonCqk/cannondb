@@ -7,7 +7,7 @@ from abc import ABCMeta
 
 from cannondb.constants import DEFAULT_CHECKPOINT_SECONDS
 from cannondb.storages import FileStorage, MemoryStorage
-from cannondb.utils import with_metaclass, LRUCache, adjust_to_power_of_2
+from cannondb.utils import with_metaclass, LRUCache, refine_to_2power
 
 
 class CannonDB(with_metaclass(ABCMeta)):
@@ -41,12 +41,12 @@ class CannonDB(with_metaclass(ABCMeta)):
             self._storage = FileStorage(
                 file_name,
                 order,
-                adjust_to_power_of_2(page_size),
-                adjust_to_power_of_2(key_size),
-                adjust_to_power_of_2(value_size),
-                adjust_to_power_of_2(file_cache)
+                refine_to_2power(page_size),
+                refine_to_2power(key_size),
+                refine_to_2power(value_size),
+                refine_to_2power(file_cache)
             )
-        self._cache = LRUCache(capacity=adjust_to_power_of_2(cache_size))
+        self._cache = LRUCache(capacity=refine_to_2power(cache_size))
         self._closed = False
         self._checkpoint_th = threading.Thread(target=self._timing_checkpoint,
                                                args=(DEFAULT_CHECKPOINT_SECONDS,)).start()
